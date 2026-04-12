@@ -65,8 +65,13 @@ struct SitchomaticApp: App {
         return ActiveAppMode(rawValue: activeModeRaw)
     }
 
-    private var isAnyTestRunning: Bool {
-        LoginViewModel.shared.isRunning || PPSRAutomationViewModel.shared.isRunning || UnifiedSessionViewModel.shared.isRunning
+    private var mainMenuBinding: Binding<ActiveAppMode?> {
+        Binding(
+            get: { activeMode },
+            set: { newMode in
+                activeModeRaw = newMode?.rawValue ?? ""
+            }
+        )
     }
 
     private var showingProfileSelect: Bool {
@@ -81,6 +86,103 @@ struct SitchomaticApp: App {
         [.unifiedSession, .ppsr]
     }
 
+    private func restorePersistentFlags(for mode: ActiveAppMode?) {
+        if mode == .unifiedSession {
+            hasEverOpenedUnified = true
+        }
+        if mode == .ppsr {
+            hasEverOpenedPPSR = true
+        }
+    }
+
+    private func persistRuntimeState() {
+        PersistentFileStorageService.shared.forceSave()
+        DebugLogger.shared.persistLatestLog()
+        LoginViewModel.shared.persistCredentialsNow()
+        PPSRAutomationViewModel.shared.persistCardsNow()
+        UnifiedSessionViewModel.shared.persistSessionsNow()
+    }
+
+    private func handleTermination() {
+        if LoginViewModel.shared.isRunning {
+            LoginViewModel.shared.emergencyStop()
+        }
+        if PPSRAutomationViewModel.shared.isRunning {
+            PPSRAutomationViewModel.shared.emergencyStop()
+        }
+        if UnifiedSessionViewModel.shared.isRunning {
+            UnifiedSessionViewModel.shared.emergencyStop()
+        }
+        persistRuntimeState()
+    }
+
+    private func configureMemoryMonitoring() {
+        let monitor = MemoryPressureMonitor.shared
+        monitor.register()
+        monitor.onMemoryWarning {
+            DebugLogger.shared.handleMemoryPressure()
+
+            ScreenshotCacheService.shared.setMaxCacheCounts(memory: 10, disk: 200)
+            LoginViewModel.shared.handleMemoryPressure()
+            LoginViewModel.shared.trimAttemptsIfNeeded()
+            PPSRAutomationViewModel.shared.handleMemoryPressure()
+            PPSRAutomationViewModel.shared.trimChecksIfNeeded()
+            UnifiedSessionViewModel.shared.handleMemoryPressure()
+            UnifiedScreenshotManager.shared.handleMemoryPressure()
+        }
+    }
+
+    private func performInitialLaunchSetup() async {
+        guard !nordInitialized else { return }
+        nordInitialized = true
+
+        CrashProtectionService.shared.register()
+        if CrashProtectionService.shared.didPerformSafeBoot {
+            showSafeBootAlert = true
+        }
+        if let previousCrash = CrashProtectionService.shared.checkForPreviousCrash() {
+            DebugLogger.shared.log("Previous crash detected: \(previousCrash.prefix(200))", category: .system, level: .critical)
+            if let report = CrashProtectionService.shared.lastCrashReport {
+                pendingCrashReport = report
+                showCrashReport = true
+            }
+        }
+
+        AppStabilityCoordinator.shared.start()
+        WebViewLifecycleManager.shared.startZombieSweeper()
+
+        Task {
+            try? await Task.sleep(for: .seconds(10))
+            CrashProtectionService.shared.clearLaunchTimestampsAfterStableLaunch()
+        }
+
+        configureMemoryMonitoring()
+
+        let vault = PersistentFileStorageService.shared
+        let didRestore = vault.restoreIfNeeded()
+        if didRestore {
+            DebugLogger.shared.log("App launched — restored state from vault", category: .persistence, level: .success)
+        }
+
+        _ = GrokAISetup.bootstrapFromEnvironment()
+
+        let nord = NordVPNService.shared
+        let hasRestoredProfile = await nord.ensureProfileNetworkPoolsReady()
+        if !hasRestoredProfile {
+            activeModeRaw = ""
+        }
+        if nord.isTokenExpired {
+            nord.lastError = "NordVPN access token needs to be refreshed before fetching a private key."
+        }
+
+        vault.saveFullState()
+        restorePersistentFlags(for: ActiveAppMode(rawValue: activeModeRaw))
+
+        if nord.hasSelectedProfile {
+            await nord.autoPopulateConfigs(forceRefresh: false)
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             ZStack {
@@ -89,16 +191,7 @@ struct SitchomaticApp: App {
 
                 if showingProfileSelect {
                     MainMenuView(
-                        activeMode: Binding(
-                            get: { activeMode },
-                            set: { newMode in
-                                if let m = newMode {
-                                    activeModeRaw = m.rawValue
-                                } else {
-                                    activeModeRaw = ""
-                                }
-                            }
-                        ),
+                        activeMode: mainMenuBinding,
                         requiresProfileSelection: true
                     )
                     .transition(.opacity)
@@ -125,16 +218,7 @@ struct SitchomaticApp: App {
                         }
 
                         if showingMenu {
-                            MainMenuView(activeMode: Binding(
-                                get: { activeMode },
-                                set: { newMode in
-                                    if let m = newMode {
-                                        activeModeRaw = m.rawValue
-                                    } else {
-                                        activeModeRaw = ""
-                                    }
-                                }
-                            ))
+                            MainMenuView(activeMode: mainMenuBinding)
                             .transition(.opacity)
                         }
                     }
@@ -155,79 +239,15 @@ struct SitchomaticApp: App {
             .onChange(of: activeModeRaw) { _, newValue in
                 let mode = ActiveAppMode(rawValue: newValue)
                 liveDebug.setActiveMode(mode)
-                if let mode {
-                    switch mode {
-                    case .unifiedSession: hasEverOpenedUnified = true
-                    case .ppsr: hasEverOpenedPPSR = true
-                    default: break
-                    }
-                }
+                restorePersistentFlags(for: mode)
             }
             .onAppear {
                 let restoredMode = ActiveAppMode(rawValue: activeModeRaw)
                 liveDebug.setActiveMode(restoredMode)
-                if restoredMode == .unifiedSession { hasEverOpenedUnified = true }
-                if restoredMode == .ppsr { hasEverOpenedPPSR = true }
+                restorePersistentFlags(for: restoredMode)
             }
             .task {
-                if !nordInitialized {
-                    nordInitialized = true
-
-                    CrashProtectionService.shared.register()
-                    if CrashProtectionService.shared.didPerformSafeBoot {
-                        showSafeBootAlert = true
-                    }
-                    if let previousCrash = CrashProtectionService.shared.checkForPreviousCrash() {
-                        DebugLogger.shared.log("Previous crash detected: \(previousCrash.prefix(200))", category: .system, level: .critical)
-                        if let report = CrashProtectionService.shared.lastCrashReport {
-                            pendingCrashReport = report
-                            showCrashReport = true
-                        }
-                    }
-
-                    AppStabilityCoordinator.shared.start()
-                    WebViewLifecycleManager.shared.startZombieSweeper()
-
-                    Task {
-                        try? await Task.sleep(for: .seconds(10))
-                        CrashProtectionService.shared.clearLaunchTimestampsAfterStableLaunch()
-                    }
-
-                    let monitor = MemoryPressureMonitor.shared
-                    monitor.register()
-                    monitor.onMemoryWarning {
-                        DebugLogger.shared.handleMemoryPressure()
-
-                        ScreenshotCacheService.shared.setMaxCacheCounts(memory: 10, disk: 200)
-                        LoginViewModel.shared.handleMemoryPressure()
-                        LoginViewModel.shared.trimAttemptsIfNeeded()
-                        PPSRAutomationViewModel.shared.handleMemoryPressure()
-                        PPSRAutomationViewModel.shared.trimChecksIfNeeded()
-                        UnifiedSessionViewModel.shared.handleMemoryPressure()
-                        UnifiedScreenshotManager.shared.handleMemoryPressure()
-                    }
-
-                    let vault = PersistentFileStorageService.shared
-                    let didRestore = vault.restoreIfNeeded()
-                    if didRestore {
-                        DebugLogger.shared.log("App launched — restored state from vault", category: .persistence, level: .success)
-                    }
-                    GrokAISetup.bootstrapFromEnvironment()
-                    let nord = NordVPNService.shared
-                    let hasRestoredProfile = await nord.ensureProfileNetworkPoolsReady()
-                    if !hasRestoredProfile {
-                        activeModeRaw = ""
-                    }
-                    if nord.isTokenExpired {
-                        nord.lastError = "NordVPN access token needs to be refreshed before fetching a private key."
-                    }
-                    vault.saveFullState()
-
-                    if nord.hasSelectedProfile {
-                        await nord.autoPopulateConfigs(forceRefresh: false)
-                    }
-
-                }
+                await performInitialLaunchSetup()
             }
             .sheet(isPresented: $showCrashReport) {
                 if let report = pendingCrashReport {
@@ -247,42 +267,19 @@ struct SitchomaticApp: App {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-                PersistentFileStorageService.shared.forceSave()
-                DebugLogger.shared.persistLatestLog()
-                LoginViewModel.shared.persistCredentialsNow()
-                PPSRAutomationViewModel.shared.persistCardsNow()
-                UnifiedSessionViewModel.shared.persistSessionsNow()
+                persistRuntimeState()
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
-                PersistentFileStorageService.shared.forceSave()
-                DebugLogger.shared.persistLatestLog()
-                LoginViewModel.shared.persistCredentialsNow()
-                PPSRAutomationViewModel.shared.persistCardsNow()
-                UnifiedSessionViewModel.shared.persistSessionsNow()
+                persistRuntimeState()
                 BackgroundTaskService.shared.handleAppDidEnterBackground()
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 BackgroundTaskService.shared.handleAppWillEnterForeground()
                 AppStabilityCoordinator.shared.handleForegroundReturn()
-                let restoredMode = ActiveAppMode(rawValue: activeModeRaw)
-                if restoredMode == .unifiedSession { hasEverOpenedUnified = true }
-                if restoredMode == .ppsr { hasEverOpenedPPSR = true }
+                restorePersistentFlags(for: ActiveAppMode(rawValue: activeModeRaw))
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
-                if LoginViewModel.shared.isRunning {
-                    LoginViewModel.shared.emergencyStop()
-                }
-                if PPSRAutomationViewModel.shared.isRunning {
-                    PPSRAutomationViewModel.shared.emergencyStop()
-                }
-                if UnifiedSessionViewModel.shared.isRunning {
-                    UnifiedSessionViewModel.shared.emergencyStop()
-                }
-                PersistentFileStorageService.shared.forceSave()
-                DebugLogger.shared.persistLatestLog()
-                LoginViewModel.shared.persistCredentialsNow()
-                PPSRAutomationViewModel.shared.persistCardsNow()
-                UnifiedSessionViewModel.shared.persistSessionsNow()
+                handleTermination()
             }
             .alert("Safe Boot Activated", isPresented: $showSafeBootAlert) {
                 Button("OK", role: .cancel) {}

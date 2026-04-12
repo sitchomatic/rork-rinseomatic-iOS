@@ -24,10 +24,9 @@ struct MainMenuView: View {
                 Color.black.opacity(0.3)
 
                 VStack(spacing: 0) {
-                    Spacer().frame(height: geo.safeAreaInsets.top + 8)
-
-                    profileSwitcher
-                        .padding(.horizontal, dynamicIslandHPadding(geo: geo))
+                    profileSelector(geo: geo)
+                        .frame(height: profileSelectorHeight(geo: geo))
+                        .padding(.top, geo.safeAreaInsets.top + 4)
                         .padding(.bottom, 12)
                         .zIndex(10)
 
@@ -85,6 +84,19 @@ struct MainMenuView: View {
         .onDisappear {
             animateIn = false
         }
+    }
+
+    private func profileSelector(geo: GeometryProxy) -> some View {
+        SplitProfileSelectorView(
+            nordService: nordService,
+            height: profileSelectorHeight(geo: geo),
+            animateIn: animateIn
+        )
+    }
+
+    private func profileSelectorHeight(geo: GeometryProxy) -> CGFloat {
+        let availableHeight: CGFloat = geo.size.height - geo.safeAreaInsets.top - geo.safeAreaInsets.bottom
+        return min(max(availableHeight * 0.23, 170), 232)
     }
 
     private func unifiedSessionZone(geo: GeometryProxy) -> some View {
@@ -493,56 +505,6 @@ struct MainMenuView: View {
         case .nodeMaven: .teal
         case .hybrid: .mint
         }
-    }
-
-    private func dynamicIslandHPadding(geo: GeometryProxy) -> CGFloat {
-        let hasDynamicIsland = geo.safeAreaInsets.top > 51
-        return hasDynamicIsland ? 56 : 20
-    }
-
-    private var profileSwitcher: some View {
-        HStack(spacing: 0) {
-            ForEach(NordKeyProfile.allCases, id: \.self) { profile in
-                Button {
-                    guard !isProfileActive(profile) else { return }
-                    withAnimation(.spring(duration: 0.3, bounce: 0.15)) {
-                        nordService.switchProfile(profile)
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 12, weight: .bold))
-                        Text(profile.rawValue.uppercased())
-                            .font(.system(size: 13, weight: .black, design: .monospaced))
-                    }
-                    .foregroundStyle(isProfileActive(profile) ? .white : .white.opacity(0.4))
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
-                    .background(
-                        Group {
-                            if isProfileActive(profile) {
-                                Capsule()
-                                    .fill(
-                                        profile == .nick
-                                            ? LinearGradient(colors: [.blue, .cyan], startPoint: .leading, endPoint: .trailing)
-                                            : LinearGradient(colors: [.purple, .pink], startPoint: .leading, endPoint: .trailing)
-                                    )
-                            }
-                        }
-                    )
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(4)
-        .background(Color.white.opacity(0.12))
-        .clipShape(Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.15), lineWidth: 1))
-        .contentShape(Capsule())
-        .sensoryFeedback(.impact(weight: .heavy), trigger: nordService.activeKeyProfile)
-        .opacity(animateIn ? 1 : 0)
-        .offset(y: animateIn ? 0 : -20)
     }
 
     private var canEnterModes: Bool {
