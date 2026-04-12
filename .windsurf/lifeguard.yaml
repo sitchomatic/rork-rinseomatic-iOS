@@ -1,0 +1,8 @@
+rules: []
+memories:
+  - title: Missing successTextFound parameter to confidenceEngine.evaluate
+    description: In LoginAutomationEngine.swift, after the refactoring that renamed welcomeTextFound to successTextFound, the call to confidenceEngine.evaluate incorrectly passes a hardcoded false value for welcomeTextFound instead of using the actual poll result value (successTextFound). This causes the confidence evaluation to not account for the detected success text, leading to potentially incorrect confidence scores for login outcomes.
+    file: c:\Users\home\Downloads\Sitchomatic1000\rork-2sitch2rinsed\ios\Sitchomatic\Services\LoginAutomationEngine.swift
+    line: 293
+    comment: welcome is  false positive always!
+  4444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444
