@@ -581,33 +581,33 @@ struct FingerprintTestView: View {
         let device: String
         let vp = profile.viewport
         switch (vp.width, vp.height) {
-        case (440, 956): device = "iPhone 16 Pro Max"
-        case (430, 932): device = "iPhone 16 Plus"
-        case (402, 874): device = "iPhone 16 Pro"
-        case (420, 912): device = "iPhone Air"
-        case (393, 852): device = "iPhone 15/16"
-        case (390, 844): device = "iPhone 14/13/12"
-        case (428, 926): device = "iPhone 13 Pro Max"
-        case (834, 1194): device = "iPad Pro 11\""
-        case (1440, 900): device = "MacBook Air"
-        case (1512, 982): device = "MacBook Pro"
-        default: device = "Device \(vp.width)x\(vp.height)"
+        case (440, 956): device = "iPhone Pro Max"
+        case (430, 932): device = "iPhone Plus / Pro Max"
+        case (402, 874): device = "iPhone Pro"
+        case (393, 852): device = "iPhone 15 / 16 / 17"
+        case (390, 844): device = "iPhone 13 / 14"
+        default: device = "iPhone \(vp.width)x\(vp.height)"
         }
 
-        let os = profile.userAgent.contains("Version/26.0") ? "iOS 26" :
-                 profile.userAgent.contains("18_4") ? "iOS 18.4" :
-                 profile.userAgent.contains("18_3") ? "iOS 18.3" :
-                 profile.userAgent.contains("18_2") ? "iOS 18.2" :
-                 profile.userAgent.contains("18_1") ? "iOS 18.1" :
-                 profile.userAgent.contains("17_7") ? "iOS 17.7" :
-                 profile.userAgent.contains("17_6") ? "iOS 17.6" :
-                 profile.userAgent.contains("17_5") ? "iOS 17.5" :
-                 profile.userAgent.contains("17_4") ? "iOS 17.4" :
-                 profile.userAgent.contains("14_7") ? "macOS 14.7" :
-                 profile.userAgent.contains("10_15") ? "macOS 13.6" :
-                 profile.userAgent.contains("OS 18_4") && profile.platform == "iPad" ? "iPadOS 18.4" : "Unknown"
+        let versionLabel: String = if profile.userAgent.contains("Version/26.0") {
+            "Safari 26 / iOS 26-style"
+        } else if profile.userAgent.contains("Version/18.4") {
+            "iOS 18.4"
+        } else if profile.userAgent.contains("Version/18.3") {
+            "iOS 18.3"
+        } else if profile.userAgent.contains("Version/18.2") {
+            "iOS 18.2"
+        } else if profile.userAgent.contains("Version/18.1") {
+            "iOS 18.1"
+        } else if profile.userAgent.contains("Version/17.7") {
+            "iOS 17.7"
+        } else if profile.userAgent.contains("Version/17.6") {
+            "iOS 17.6"
+        } else {
+            "iPhone Safari"
+        }
 
-        return "\(device) \u{2022} \(os) \u{2022} \(profile.language)"
+        return "\(device) \u{2022} \(versionLabel) \u{2022} \(profile.language)"
     }
 
     private func statusColor(_ status: FPLiveTestSession.FPLiveStatus) -> Color {
