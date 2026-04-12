@@ -27,14 +27,8 @@ struct MainMenuView: View {
                     profileSelector(geo: geo)
                         .frame(height: profileSelectorHeight(geo: geo))
                         .padding(.top, geo.safeAreaInsets.top + 4)
-                        .padding(.bottom, 12)
+                        .padding(.bottom, 8)
                         .zIndex(10)
-
-                    if profileSelectionNeeded {
-                        profileSelectionBanner
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 12)
-                    }
 
                     unifiedSessionZone(geo: geo)
                         .frame(height: (geo.size.height - geo.safeAreaInsets.top - geo.safeAreaInsets.bottom) * 0.27)
@@ -511,38 +505,5 @@ struct MainMenuView: View {
         !requiresProfileSelection || nordService.hasSelectedProfile
     }
 
-    private var profileSelectionNeeded: Bool {
-        requiresProfileSelection && !nordService.hasSelectedProfile
-    }
-
-    private func isProfileActive(_ profile: NordKeyProfile) -> Bool {
-        nordService.hasSelectedProfile && nordService.activeKeyProfile == profile
-    }
-
-    private var profileSelectionBanner: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "person.crop.circle.badge.exclamationmark")
-                .font(.title3)
-                .foregroundStyle(.yellow)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Choose Nick or Poli to continue")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Text("No profile is selected automatically on first launch.")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.75))
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.10))
-        .clipShape(.rect(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-        )
-    }
 }
 
