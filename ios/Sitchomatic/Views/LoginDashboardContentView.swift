@@ -22,6 +22,7 @@ struct LoginDashboardContentView: View {
                 if vm.stealthEnabled {
                     stealthBadge
                 }
+                burnPolicyCard
                 statsRow
                 if !vm.untestedCredentials.isEmpty {
                     credentialSection(title: "Queued — Untested", creds: Array(vm.untestedCredentials.prefix(50)), color: .secondary, icon: "clock.fill")
@@ -302,6 +303,47 @@ struct LoginDashboardContentView: View {
         }
     }
 
+    private var burnPolicyCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Credential Burn Policy")
+                        .font(.headline)
+                    Text(vm.burnPolicy.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(vm.burnPolicy.shortLabel)
+                    .font(.system(.caption, design: .monospaced, weight: .bold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.orange.opacity(0.12))
+                    .clipShape(.capsule)
+            }
+
+            Picker("Burn Policy", selection: Binding(
+                get: { vm.burnPolicy },
+                set: { vm.updateBurnPolicy($0) }
+            )) {
+                ForEach(CredentialBurnPolicy.allCases) { policy in
+                    Text(policy.title).tag(policy)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            HStack(spacing: 10) {
+                LoginMiniStat(value: "\(vm.noAccCredentials.filter(vm.canBurnCredential).count)", label: "Burnable NoAcc", color: .red, icon: "flame.fill")
+                LoginMiniStat(value: "\(vm.tempDisabledCredentials.filter(vm.canBurnCredential).count)", label: "Burnable Temp", color: .orange, icon: "shield.slash")
+                LoginMiniStat(value: "\(vm.permDisabledCredentials.filter(vm.canBurnCredential).count)", label: "Burnable Perm", color: .purple, icon: "lock.open.fill")
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(.rect(cornerRadius: 14))
+    }
+
     private var statsRow: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
@@ -348,10 +390,10 @@ struct LoginDashboardContentView: View {
                     Text("Purge All").font(.caption.bold()).foregroundStyle(.red)
                 }
                 .alert("Purge No Account", isPresented: $showPurgeNoAccConfirm) {
-                    Button("Purge \(vm.noAccCredentials.count)", role: .destructive) { vm.purgeNoAccCredentials() }
+                    Button("Purge \(vm.noAccCredentials.filter(vm.canBurnCredential).count)", role: .destructive) { vm.purgeNoAccCredentials() }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("This will permanently remove \(vm.noAccCredentials.count) credential(s) with no account. This cannot be undone.")
+                    Text("This will remove only burnable no-account credentials under the current policy. Protected entries will remain in the queue.")
                 }
             }
             ForEach(vm.noAccCredentials) { cred in
@@ -374,10 +416,10 @@ struct LoginDashboardContentView: View {
                     Text("Purge").font(.caption.bold()).foregroundStyle(.red.opacity(0.7))
                 }
                 .alert("Purge Perm Disabled", isPresented: $showPurgePermDisabledConfirm) {
-                    Button("Purge \(vm.permDisabledCredentials.count)", role: .destructive) { vm.purgePermDisabledCredentials() }
+                    Button("Purge \(vm.permDisabledCredentials.filter(vm.canBurnCredential).count)", role: .destructive) { vm.purgePermDisabledCredentials() }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("This will permanently remove \(vm.permDisabledCredentials.count) permanently disabled credential(s). This cannot be undone.")
+                    Text("This will remove only burnable permanently disabled credentials under the current policy.")
                 }
             }
             HStack(spacing: 6) {
@@ -406,7 +448,7 @@ struct LoginDashboardContentView: View {
             }
             HStack(spacing: 6) {
                 Image(systemName: "info.circle.fill").font(.caption2).foregroundStyle(.orange)
-                Text("Temporarily locked. Assign passwords in Temp Disabled tab.")
+                Text("Temporarily locked. Assign passwords in Temp Disabled tab. Protected from burn in the safer modes.")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             .padding(8).frame(maxWidth: .infinity, alignment: .leading)

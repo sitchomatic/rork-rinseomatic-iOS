@@ -174,10 +174,11 @@ class FlowRecorderViewModel {
             totalDurationMs: recordingDurationMs,
             actionCount: currentActions.count
         )
+        let review = FlowSaveReviewService.review(original: nil, updated: flow)
 
         savedFlows.insert(flow, at: 0)
         persistence.saveFlows(savedFlows)
-        AutomationFoundationStore.shared.syncFlowMetadata(flow)
+        AutomationFoundationStore.shared.commitFlowSave(original: nil, updated: flow, review: review)
         flowName = ""
         showSaveSheet = false
         statusMessage = "Flow '\(name)' saved — \(flow.actionCount) actions"
@@ -190,12 +191,13 @@ class FlowRecorderViewModel {
         updatedFlow.actions = keepActions + currentActions
         updatedFlow.actionCount = updatedFlow.actions.count
         updatedFlow.totalDurationMs = updatedFlow.actions.reduce(0) { $0 + $1.deltaFromPreviousMs }
+        let review = FlowSaveReviewService.review(original: flow, updated: updatedFlow)
 
         if let idx = savedFlows.firstIndex(where: { $0.id == flow.id }) {
             savedFlows[idx] = updatedFlow
         }
         persistence.saveFlows(savedFlows)
-        AutomationFoundationStore.shared.syncFlowMetadata(updatedFlow)
+        AutomationFoundationStore.shared.commitFlowSave(original: flow, updated: updatedFlow, review: review)
         statusMessage = "Flow '\(flow.name)' updated — merged \(currentActions.count) new actions from step \(fromStep)"
         currentActions = []
     }
@@ -210,10 +212,40 @@ class FlowRecorderViewModel {
         selectedFlow = flow
         textboxValues = [:]
         playFromStepIndex = 0
+        recordAfterPlayback = false
         for mapping in flow.textboxMappings {
             textboxValues[mapping.placeholderKey] = ""
         }
         showPlaybackSheet = true
+    }
+
+    func prepareContinueRecording(_ flow: RecordedFlow, fromStep: Int) {
+        selectedFlow = flow
+        textboxValues = [:]
+        playFromStepIndex = max(0, min(fromStep, max(0, flow.actions.count - 1)))
+        recordAfterPlayback = true
+        for mapping in flow.textboxMappings {
+            textboxValues[mapping.placeholderKey] = ""
+        }
+        statusMessage = "Prepared continue-from-here playback at step \(playFromStepIndex)"
+        showPlaybackSheet = true
+    }
+
+    func saveEditedFlow(_ updated: RecordedFlow, review: FlowSaveReview) {
+        guard let index = savedFlows.firstIndex(where: { $0.id == updated.id }) else { return }
+        let original = savedFlows[index]
+        savedFlows[index] = updated
+        persistence.saveFlows(savedFlows)
+        AutomationFoundationStore.shared.commitFlowSave(original: original, updated: updated, review: review)
+        statusMessage = "Flow '\(updated.name)' saved — version updated"
+    }
+
+    func duplicateFlow(_ copy: RecordedFlow) {
+        savedFlows.insert(copy, at: 0)
+        persistence.saveFlows(savedFlows)
+        let review = FlowSaveReviewService.review(original: nil, updated: copy)
+        AutomationFoundationStore.shared.commitFlowSave(original: nil, updated: copy, review: review)
+        statusMessage = "Duplicated '\(copy.name)'"
     }
 
     func playSelectedFlow() {
@@ -223,22 +255,29 @@ class FlowRecorderViewModel {
             return
         }
 
+        let playbackStart = recordAfterPlayback ? 0 : playFromStepIndex
+        let playbackEnd = recordAfterPlayback ? playFromStepIndex : nil
+        let expectedSteps = recordAfterPlayback ? playFromStepIndex : max(flow.actions.count - playFromStepIndex, 0)
+
         showPlaybackSheet = false
         isPlaying = true
         playbackProgress = 0
         playbackActionIndex = 0
-        playbackTotalActions = flow.actions.count
+        playbackTotalActions = expectedSteps
         failedActions = 0
         healedActions = 0
         lastError = nil
-        statusMessage = "Playing '\(flow.name)' from step \(playFromStepIndex)..."
+        statusMessage = recordAfterPlayback
+            ? "Replaying safe prefix through step \(playFromStepIndex)..."
+            : "Playing '\(flow.name)' from step \(playFromStepIndex)..."
 
         Task {
             await playbackEngine.playFlow(
                 flow,
                 in: webView,
                 textboxValues: textboxValues,
-                startFromStep: playFromStepIndex,
+                startFromStep: playbackStart,
+                endBeforeStep: playbackEnd,
                 onProgress: { [weak self] current, total in
                     guard let self else { return }
                     self.playbackActionIndex = current
@@ -251,14 +290,12 @@ class FlowRecorderViewModel {
                     self.failedActions = self.playbackEngine.failedActionIndices.count
                     self.healedActions = self.playbackEngine.healedActionCount
                     if success {
-                        if self.failedActions > 0 {
+                        if self.recordAfterPlayback {
+                            self.startRecordingFromStep()
+                        } else if self.failedActions > 0 {
                             self.statusMessage = "Playback complete — \(self.failedActions) failed, \(self.healedActions) healed"
                         } else {
                             self.statusMessage = "Playback complete"
-                        }
-                        if self.recordAfterPlayback {
-                            self.playFromStepIndex = flow.actions.count
-                            self.startRecordingFromStep()
                         }
                     } else {
                         self.statusMessage = "Playback cancelled"

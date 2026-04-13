@@ -47,6 +47,7 @@ class LoginViewModel {
     var lastFingerprintScore: FingerprintValidationService.FingerprintScore? { FingerprintValidationService.shared.lastScore }
     var savedCropRect: CGRect? = nil
     var automationSettings: AutomationSettings = AutomationSettings()
+    var burnPolicy: CredentialBurnPolicy = .afterAllAttempts
     var isSlowDebugModeEnabled: Bool {
         automationSettings.slowDebugMode
     }
@@ -185,6 +186,7 @@ class LoginViewModel {
             stealthEnabled = settings.stealthEnabled
             testTimeout = max(settings.testTimeout, AutomationSettings.minimumTimeoutSeconds)
         }
+        burnPolicy = persistence.loadBurnPolicy()
         loadCropRect()
         if !credentials.isEmpty {
             log("Restored \(credentials.count) credentials from storage")
@@ -252,6 +254,7 @@ class LoginViewModel {
                 stealthEnabled: stealthEnabled,
                 testTimeout: testTimeout
             )
+            persistence.saveBurnPolicy(burnPolicy)
         }
     }
 
@@ -502,7 +505,13 @@ class LoginViewModel {
         persistCredentials()
     }
 
-    func deleteCredential(_ cred: LoginCredential) {
+    func deleteCredential(_ cred: LoginCredential, force: Bool = false) {
+        guard force || canBurnCredential(cred) else {
+            if let reason = burnProtectionReason(for: cred) {
+                log("Protected credential kept: \(cred.username) — \(reason)", level: .warning)
+            }
+            return
+        }
         credentials.removeAll { $0.id == cred.id }
         log("Removed credential: \(cred.username)")
         persistCredentials()
@@ -515,17 +524,42 @@ class LoginViewModel {
     }
 
     func purgePermDisabledCredentials() {
-        let count = permDisabledCredentials.count
-        credentials.removeAll { $0.status == .permDisabled }
-        log("Purged \(count) perm disabled credential(s)")
+        let removableIDs = Set(permDisabledCredentials.filter(canBurnCredential).map(\.id))
+        let protectedCount = permDisabledCredentials.count - removableIDs.count
+        credentials.removeAll { removableIDs.contains($0.id) }
+        log("Purged \(removableIDs.count) perm disabled credential(s)\(protectedCount > 0 ? " — \(protectedCount) protected" : "")")
         persistCredentials()
     }
 
     func purgeNoAccCredentials() {
-        let count = noAccCredentials.count
-        credentials.removeAll { $0.status == .noAcc }
-        log("Purged \(count) no-acc credential(s)")
+        let removableIDs = Set(noAccCredentials.filter(canBurnCredential).map(\.id))
+        let protectedCount = noAccCredentials.count - removableIDs.count
+        credentials.removeAll { removableIDs.contains($0.id) }
+        log("Purged \(removableIDs.count) no-acc credential(s)\(protectedCount > 0 ? " — \(protectedCount) protected" : "")")
         persistCredentials()
+    }
+
+    func updateBurnPolicy(_ policy: CredentialBurnPolicy) {
+        guard burnPolicy != policy else { return }
+        burnPolicy = policy
+        persistence.saveBurnPolicy(policy)
+        log("Burn policy updated to \(policy.title)")
+    }
+
+    func canBurnCredential(_ credential: LoginCredential) -> Bool {
+        burnPolicy.allowsBurn(
+            status: credential.status,
+            fullLoginAttemptCount: credential.fullLoginAttemptCount,
+            accountConfirmed: credential.accountConfirmedViaTempDisabled
+        )
+    }
+
+    func burnProtectionReason(for credential: LoginCredential) -> String? {
+        burnPolicy.protectionReason(
+            status: credential.status,
+            fullLoginAttemptCount: credential.fullLoginAttemptCount,
+            accountConfirmed: credential.accountConfirmedViaTempDisabled
+        )
     }
 
     func testSingleCredential(_ cred: LoginCredential) {
@@ -613,9 +647,11 @@ class LoginViewModel {
             } else {
                 credential.recordResult(success: false, duration: duration, error: attempt.errorMessage, detail: "no account")
                 log("\(credential.username) — NO ACC: \(credential.fullLoginAttemptCount) attempts with no temp disabled — confirmed no account", level: .error)
-                if blacklistService.autoBlacklistNoAcc {
+                if blacklistService.autoBlacklistNoAcc && burnPolicy.allowsAutoBlacklistNoAcc {
                     blacklistService.addToBlacklist(credential.username, reason: "Auto: no account after \(credential.fullLoginAttemptCount) attempts")
                     log("\(credential.username) — auto-added to blacklist (no acc)", level: .warning)
+                } else if blacklistService.autoBlacklistNoAcc {
+                    log("\(credential.username) — no-account result kept out of blacklist by \(burnPolicy.title)", level: .info)
                 }
             }
             consecutiveUnusualFailures = 0

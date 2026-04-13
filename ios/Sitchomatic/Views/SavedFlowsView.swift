@@ -8,7 +8,7 @@ struct SavedFlowsView: View {
     @State private var exportData: Data?
     @State private var showExportShare: Bool = false
     @State private var editingFlow: RecordedFlow?
-    @State private var showEditingStudio: Bool = false
+    @State private var historyFlow: RecordedFlow?
 
     var body: some View {
         Group {
@@ -154,7 +154,6 @@ struct SavedFlowsView: View {
 
                 Button {
                     editingFlow = flow
-                    showEditingStudio = true
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "pencil")
@@ -166,6 +165,23 @@ struct SavedFlowsView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
                     .background(.purple)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    historyFlow = flow
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                            .font(.system(size: 10))
+                        Text("History")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Color(.tertiarySystemFill))
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -207,31 +223,39 @@ struct SavedFlowsView: View {
                 ShareSheetView(items: [data])
             }
         }
-        .sheet(isPresented: $showEditingStudio) {
-            if let flow = editingFlow {
-                NavigationStack {
-                    FlowEditingStudioView(
-                        flow: flow,
-                        onSave: { updated in
-                            if let idx = vm.savedFlows.firstIndex(where: { $0.id == updated.id }) {
-                                vm.savedFlows[idx] = updated
-                                FlowPersistenceService.shared.saveFlows(vm.savedFlows)
-                                foundationStore.syncFlows(vm.savedFlows)
-                            }
-                            showEditingStudio = false
-                        },
-                        onDuplicate: { copy in
-                            vm.savedFlows.insert(copy, at: 0)
-                            FlowPersistenceService.shared.saveFlows(vm.savedFlows)
-                            foundationStore.syncFlows(vm.savedFlows)
-                            showEditingStudio = false
-                        }
-                    )
-                }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationContentInteraction(.scrolls)
+        .sheet(item: $editingFlow) { flow in
+            NavigationStack {
+                FlowEditingStudioView(
+                    flow: flow,
+                    comparisonFlow: vm.savedFlows.first(where: { $0.id == flow.id }),
+                    onSave: { updated, review in
+                        vm.saveEditedFlow(updated, review: review)
+                        foundationStore.syncFlows(vm.savedFlows)
+                        editingFlow = nil
+                    },
+                    onDuplicate: { copy in
+                        vm.duplicateFlow(copy)
+                        foundationStore.syncFlows(vm.savedFlows)
+                        editingFlow = nil
+                    },
+                    onContinueRecording: { flow, step in
+                        editingFlow = nil
+                        vm.prepareContinueRecording(flow, fromStep: step)
+                    }
+                )
             }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationContentInteraction(.scrolls)
+        }
+        .sheet(item: $historyFlow) { flow in
+            FlowHistorySheet(flow: flow) { restoredFlow in
+                historyFlow = nil
+                editingFlow = restoredFlow
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationContentInteraction(.scrolls)
         }
     }
 

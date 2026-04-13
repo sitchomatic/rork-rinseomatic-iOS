@@ -9,6 +9,7 @@ class LoginPersistenceService {
     private let iCloudCredentialsKey = "icloud_login_credentials_v1"
     private let viewModeKey = "login_view_mode_prefs_v1"
     private let historyKey = "login_testing_history_v1"
+    private let burnPolicyKey = "login_burn_policy_v1"
 
     private let store = NSUbiquitousKeyValueStore.default
 
@@ -23,7 +24,13 @@ class LoginPersistenceService {
                 "notes": cred.notes,
                 "assignedPasswords": cred.assignedPasswords,
                 "nextPasswordIndex": cred.nextPasswordIndex,
+                "fullLoginAttemptCount": cred.fullLoginAttemptCount,
+                "accountConfirmedViaTempDisabled": cred.accountConfirmedViaTempDisabled,
             ]
+
+            if let lastTempDisabledCheck = cred.lastTempDisabledCheck {
+                dict["lastTempDisabledCheck"] = lastTempDisabledCheck.timeIntervalSince1970
+            }
 
             let results = cred.testResults.map { result -> [String: Any] in
                 var r: [String: Any] = [
@@ -74,6 +81,9 @@ class LoginPersistenceService {
             if let notes = dict["notes"] as? String { cred.notes = notes }
             if let assignedPws = dict["assignedPasswords"] as? [String] { cred.assignedPasswords = assignedPws }
             if let pwIdx = dict["nextPasswordIndex"] as? Int { cred.nextPasswordIndex = pwIdx }
+            if let fullLoginAttemptCount = dict["fullLoginAttemptCount"] as? Int { cred.fullLoginAttemptCount = fullLoginAttemptCount }
+            if let accountConfirmedViaTempDisabled = dict["accountConfirmedViaTempDisabled"] as? Bool { cred.accountConfirmedViaTempDisabled = accountConfirmedViaTempDisabled }
+            if let lastTempDisabledCheck = dict["lastTempDisabledCheck"] as? TimeInterval { cred.lastTempDisabledCheck = Date(timeIntervalSince1970: lastTempDisabledCheck) }
 
             if let results = dict["testResults"] as? [[String: Any]] {
                 cred.testResults = results.compactMap { r in
@@ -140,6 +150,18 @@ class LoginPersistenceService {
     func clearTestQueue() {
         UserDefaults.standard.removeObject(forKey: testQueueKey)
         UserDefaults.standard.removeObject(forKey: testQueueTimestampKey)
+    }
+
+    func saveBurnPolicy(_ policy: CredentialBurnPolicy) {
+        UserDefaults.standard.set(policy.rawValue, forKey: burnPolicyKey)
+    }
+
+    func loadBurnPolicy() -> CredentialBurnPolicy {
+        guard let rawValue = UserDefaults.standard.string(forKey: burnPolicyKey),
+              let policy = CredentialBurnPolicy(rawValue: rawValue) else {
+            return .afterAllAttempts
+        }
+        return policy
     }
 
     func syncFromiCloud() -> [LoginCredential]? {

@@ -74,8 +74,13 @@ final class AutomationFoundationStore {
         let descriptor: FetchDescriptor<AutomationFlowTemplateRecord> = fetchDescriptorForFlow(flowID: flowID)
         if let existing = (try? context.fetch(descriptor))?.first {
             context.delete(existing)
-            try? context.save()
         }
+        let historyDescriptor: FetchDescriptor<AutomationFlowHistoryRecord> = fetchHistoryDescriptorForFlow(flowID: flowID)
+        let historyRecords: [AutomationFlowHistoryRecord] = (try? context.fetch(historyDescriptor)) ?? []
+        for record in historyRecords {
+            context.delete(record)
+        }
+        try? context.save()
         flowMetadataByID.removeValue(forKey: flowID)
         refreshStorageHealth(currentSessionScreenshotCount: storageHealth.currentSessionScreenshotCount)
     }
@@ -177,6 +182,69 @@ final class AutomationFoundationStore {
         pruneScreenshotHistoryIfNeeded(context: context)
         refreshStorageHealth(currentSessionScreenshotCount: currentSessionScreenshotCount)
         return true
+    }
+
+    func commitFlowSave(original: RecordedFlow?, updated: RecordedFlow, review: FlowSaveReview) {
+        guard let context else { return }
+
+        let descriptor: FetchDescriptor<AutomationFlowTemplateRecord> = fetchDescriptorForFlow(flowID: updated.id)
+        let existing: AutomationFlowTemplateRecord? = (try? context.fetch(descriptor))?.first
+        let now = Date()
+        let shouldArchivePrevious = original.map { hasMaterialDifferences($0, updated) } ?? false
+
+        if let original, let existing, shouldArchivePrevious {
+            if let snapshotData = try? JSONEncoder().encode(original) {
+                let historyRecord = AutomationFlowHistoryRecord(
+                    recordID: UUID().uuidString,
+                    flowID: updated.id,
+                    version: existing.version,
+                    name: original.name,
+                    url: original.url,
+                    savedAt: now,
+                    snapshotData: snapshotData,
+                    changeSummary: historySummary(from: review),
+                    actionCount: original.actionCount,
+                    totalDurationMs: original.totalDurationMs
+                )
+                context.insert(historyRecord)
+            }
+        }
+
+        upsertFlowMetadata(updated, in: context)
+        if let existing, shouldArchivePrevious {
+            existing.version += 1
+            existing.updatedAt = now
+        }
+
+        try? context.save()
+        refreshFlowMetadata()
+        refreshStorageHealth(currentSessionScreenshotCount: storageHealth.currentSessionScreenshotCount)
+    }
+
+    func flowHistory(for flowID: String) -> [AutomationFlowHistorySnapshot] {
+        guard let context else { return [] }
+        let descriptor: FetchDescriptor<AutomationFlowHistoryRecord> = fetchHistoryDescriptorForFlow(flowID: flowID)
+        let records: [AutomationFlowHistoryRecord] = (try? context.fetch(descriptor)) ?? []
+        return records.map { record in
+            AutomationFlowHistorySnapshot(
+                id: record.recordID,
+                flowID: record.flowID,
+                version: record.version,
+                name: record.name,
+                url: record.url,
+                savedAt: record.savedAt,
+                changeSummary: record.changeSummary,
+                actionCount: record.actionCount,
+                totalDurationMs: record.totalDurationMs
+            )
+        }
+    }
+
+    func restoreFlowRevision(recordID: String) -> RecordedFlow? {
+        guard let context else { return nil }
+        let descriptor: FetchDescriptor<AutomationFlowHistoryRecord> = fetchHistoryDescriptor(recordID: recordID)
+        guard let record = (try? context.fetch(descriptor))?.first else { return nil }
+        return try? JSONDecoder().decode(RecordedFlow.self, from: record.snapshotData)
     }
 
     func refreshStorageHealth(currentSessionScreenshotCount: Int) {
@@ -341,7 +409,6 @@ final class AutomationFoundationStore {
             existing.actionCount = flow.actionCount
             existing.totalDurationMs = flow.totalDurationMs
             if changed {
-                existing.version += 1
                 existing.updatedAt = now
             }
         } else {
@@ -389,6 +456,36 @@ final class AutomationFoundationStore {
         return descriptor
     }
 
+    private func fetchHistoryDescriptorForFlow(flowID: String) -> FetchDescriptor<AutomationFlowHistoryRecord> {
+        FetchDescriptor(
+            predicate: #Predicate { $0.flowID == flowID },
+            sortBy: [SortDescriptor(\AutomationFlowHistoryRecord.savedAt, order: .reverse)]
+        )
+    }
+
+    private func fetchHistoryDescriptor(recordID: String) -> FetchDescriptor<AutomationFlowHistoryRecord> {
+        var descriptor: FetchDescriptor<AutomationFlowHistoryRecord> = FetchDescriptor(predicate: #Predicate { $0.recordID == recordID })
+        descriptor.fetchLimit = 1
+        return descriptor
+    }
+
+    private func historySummary(from review: FlowSaveReview) -> String {
+        let titles = review.changeItems
+            .filter { $0.id != "no-changes" }
+            .map(\.title)
+        if titles.isEmpty {
+            return review.summaryText
+        }
+        return titles.joined(separator: " • ")
+    }
+
+    private func hasMaterialDifferences(_ lhs: RecordedFlow, _ rhs: RecordedFlow) -> Bool {
+        guard let lhsData = try? JSONEncoder().encode(lhs), let rhsData = try? JSONEncoder().encode(rhs) else {
+            return true
+        }
+        return lhsData != rhsData
+    }
+
     private func telemetryMessage(for action: RecordedAction, url: String) -> String {
         let selector = action.targetSelector ?? action.targetTagName ?? url
         switch action.type {
@@ -421,6 +518,7 @@ final class AutomationFoundationStore {
         let configuration = ModelConfiguration(url: storeURL)
         return try? ModelContainer(
             for: AutomationFlowTemplateRecord.self,
+            AutomationFlowHistoryRecord.self,
             AutomationTelemetryRecord.self,
             AutomationScreenshotRecord.self,
             configurations: configuration

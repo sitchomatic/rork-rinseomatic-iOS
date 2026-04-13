@@ -20,17 +20,28 @@ struct FlowEditingStudioView: View {
     @State private var showOptimizeSheet: Bool = false
     @State private var showActionTestSheet: Bool = false
     @State private var testingAction: RecordedAction?
+    @State private var pendingSaveReview: FlowSaveReview?
+    @State private var reviewCandidateFlow: RecordedFlow?
 
-    let onSave: (RecordedFlow) -> Void
+    let onSave: (RecordedFlow, FlowSaveReview) -> Void
     let onDuplicate: (RecordedFlow) -> Void
+    let onContinueRecording: (RecordedFlow, Int) -> Void
 
-    private let persistence = FlowPersistenceService.shared
+    private let reviewBaselineFlow: RecordedFlow
 
-    init(flow: RecordedFlow, onSave: @escaping (RecordedFlow) -> Void, onDuplicate: @escaping (RecordedFlow) -> Void) {
+    init(
+        flow: RecordedFlow,
+        comparisonFlow: RecordedFlow? = nil,
+        onSave: @escaping (RecordedFlow, FlowSaveReview) -> Void,
+        onDuplicate: @escaping (RecordedFlow) -> Void,
+        onContinueRecording: @escaping (RecordedFlow, Int) -> Void
+    ) {
         self._flow = State(initialValue: flow)
         self._flowName = State(initialValue: flow.name)
+        self.reviewBaselineFlow = comparisonFlow ?? flow
         self.onSave = onSave
         self.onDuplicate = onDuplicate
+        self.onContinueRecording = onContinueRecording
     }
 
     private var filteredActions: [RecordedAction] {
@@ -56,6 +67,10 @@ struct FlowEditingStudioView: View {
             counts[action.type, default: 0] += 1
         }
         return counts.sorted { $0.value > $1.value }
+    }
+
+    private var canReorderActions: Bool {
+        filterType == nil && searchText.isEmpty
     }
 
     var body: some View {
@@ -109,6 +124,17 @@ struct FlowEditingStudioView: View {
             }
         }
         .searchable(text: $searchText, prompt: "Search actions...")
+        .sheet(item: $pendingSaveReview) { review in
+            FlowSaveReviewSheet(flowName: reviewCandidateFlow?.name ?? flowName, review: review) {
+                if let reviewCandidateFlow {
+                    onSave(reviewCandidateFlow, review)
+                    self.reviewCandidateFlow = nil
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationContentInteraction(.scrolls)
+        }
         .sheet(isPresented: $showActionEditor) {
             if let action = editingAction, let index = editingIndex {
                 NavigationStack {
@@ -321,6 +347,11 @@ struct FlowEditingStudioView: View {
                 }
                 .padding(.vertical, 20)
             } else {
+                if !canReorderActions {
+                    Label("Clear filters to reorder or continue recording from a specific step.", systemImage: "line.3.horizontal.decrease.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 ForEach(Array(filteredActions.enumerated()), id: \.element.id) { displayIndex, action in
                     let realIndex = flow.actions.firstIndex(where: { $0.id == action.id }) ?? displayIndex
                     ActionRowView(
@@ -355,10 +386,14 @@ struct FlowEditingStudioView: View {
                         onTestAction: {
                             testingAction = action
                             showActionTestSheet = true
+                        },
+                        onContinueRecording: {
+                            onContinueRecording(flow, realIndex)
                         }
                     )
                 }
                 .onMove { source, destination in
+                    guard canReorderActions else { return }
                     flow.actions.move(fromOffsets: source, toOffset: destination)
                 }
             }
@@ -366,8 +401,14 @@ struct FlowEditingStudioView: View {
             HStack {
                 Label("Actions (\(filteredActions.count)/\(flow.actions.count))", systemImage: "list.bullet")
                 Spacer()
-                EditButton()
-                    .font(.caption)
+                if canReorderActions {
+                    EditButton()
+                        .font(.caption)
+                } else {
+                    Text("Locked")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -378,7 +419,9 @@ struct FlowEditingStudioView: View {
         flow.name = flowName
         flow.actionCount = flow.actions.count
         flow.totalDurationMs = flow.actions.reduce(0) { $0 + $1.deltaFromPreviousMs }
-        onSave(flow)
+        let review = FlowSaveReviewService.review(original: reviewBaselineFlow, updated: flow)
+        reviewCandidateFlow = flow
+        pendingSaveReview = review
     }
 
     private func duplicateFlow() {
@@ -497,6 +540,7 @@ private struct ActionRowView: View {
     let onInsertAfter: () -> Void
     let onDelete: () -> Void
     let onTestAction: () -> Void
+    let onContinueRecording: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -553,6 +597,9 @@ private struct ActionRowView: View {
             Button { onTestAction() } label: {
                 Label("Test Action Methods", systemImage: "play.square.stack")
             }
+            Button { onContinueRecording() } label: {
+                Label("Continue Recording Here", systemImage: "record.circle")
+            }
             Button { onInsertBefore() } label: {
                 Label("Insert Before", systemImage: "arrow.up.to.line")
             }
@@ -578,6 +625,10 @@ private struct ActionRowView: View {
                 Label("Test", systemImage: "play.square.stack")
             }
             .tint(.purple)
+            Button { onContinueRecording() } label: {
+                Label("Continue", systemImage: "record.circle")
+            }
+            .tint(.red)
         }
     }
 

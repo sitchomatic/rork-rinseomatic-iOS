@@ -110,7 +110,9 @@ struct TempDisabledAccountsView: View {
                 })
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button { vm.restoreCredential(cred) } label: { Label("Restore", systemImage: "arrow.counterclockwise") }.tint(.blue)
-                    Button(role: .destructive) { vm.deleteCredential(cred) } label: { Label("Delete", systemImage: "trash") }
+                    if vm.canBurnCredential(cred) {
+                        Button(role: .destructive) { vm.deleteCredential(cred) } label: { Label("Delete", systemImage: "trash") }
+                    }
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
             }

@@ -45,7 +45,7 @@ struct FlowRecorderView: View {
             saveFlowSheet
         }
         .sheet(isPresented: $vm.showPlaybackSheet) {
-            playbackConfigSheet
+            FlowPlaybackConfigSheet(vm: vm)
         }
         .navigationDestination(for: String.self) { destination in
             if destination == "savedFlows" {
@@ -393,94 +393,7 @@ struct FlowRecorderView: View {
     }
 
     private var playbackConfigSheet: some View {
-        NavigationStack {
-            Form {
-                if let flow = vm.selectedFlow {
-                    Section("Flow: \(flow.name)") {
-                        LabeledContent("Actions", value: "\(flow.actionCount)")
-                        LabeledContent("Duration", value: flow.formattedDuration)
-                        LabeledContent("URL") {
-                            Text(flow.url)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    Section("Playback Options") {
-                        Stepper("Start from step: \(vm.playFromStepIndex)", value: $vm.playFromStepIndex, in: 0...max(0, flow.actions.count - 1))
-
-                        Toggle("Record after playback", isOn: $vm.recordAfterPlayback)
-                            .tint(.red)
-
-                        if vm.playFromStepIndex > 0 {
-                            let actionAtStep = flow.actions[min(vm.playFromStepIndex, flow.actions.count - 1)]
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .foregroundStyle(.orange)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Step \(vm.playFromStepIndex): \(actionAtStep.type.rawValue)")
-                                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                    if let pos = actionAtStep.mousePosition {
-                                        Text("(\(Int(pos.x)),\(Int(pos.y)))")
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if !flow.textboxMappings.isEmpty {
-                        Section("Fill Text Fields") {
-                            ForEach(flow.textboxMappings) { mapping in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(mapping.label)
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                        .foregroundStyle(.blue)
-                                    TextField("Enter value for \(mapping.label)", text: Binding(
-                                        get: { vm.textboxValues[mapping.placeholderKey] ?? "" },
-                                        set: { vm.textboxValues[mapping.placeholderKey] = $0 }
-                                    ))
-                                    .font(.system(size: 14))
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    if !mapping.originalText.isEmpty {
-                                        Text("Original: \(mapping.originalText)")
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Section {
-                        Button {
-                            vm.playSelectedFlow()
-                        } label: {
-                            HStack {
-                                Image(systemName: "play.fill")
-                                Text("Start Playback")
-                            }
-                            .frame(maxWidth: .infinity)
-                            .fontWeight(.semibold)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Playback Config")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        vm.showPlaybackSheet = false
-                    }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationContentInteraction(.scrolls)
+        FlowPlaybackConfigSheet(vm: vm)
     }
 }
 

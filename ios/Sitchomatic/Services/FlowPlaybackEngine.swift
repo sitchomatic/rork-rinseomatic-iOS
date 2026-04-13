@@ -31,6 +31,7 @@ class FlowPlaybackEngine {
         in webView: WKWebView,
         textboxValues: [String: String] = [:],
         startFromStep: Int = 0,
+        endBeforeStep: Int? = nil,
         onProgress: @escaping (Int, Int) -> Void,
         onComplete: @escaping (Bool) -> Void
     ) async {
@@ -40,17 +41,19 @@ class FlowPlaybackEngine {
         }
 
         let effectiveStart = max(0, min(startFromStep, flow.actions.count))
+        let effectiveEnd = max(effectiveStart, min(endBeforeStep ?? flow.actions.count, flow.actions.count))
+        let actionsToRun = max(effectiveEnd - effectiveStart, 0)
 
         isPlaying = true
         cancelled = false
-        totalActions = flow.actions.count
-        currentActionIndex = effectiveStart
+        totalActions = actionsToRun
+        currentActionIndex = 0
         lastPlaybackError = nil
         failedActionIndices = []
         healedActionCount = 0
 
         let sessionId = "playback_\(flow.id.prefix(8))"
-        logger.startSession(sessionId, category: .flowRecorder, message: "FlowPlayback: starting '\(flow.name)' from step \(effectiveStart) — \(flow.actions.count) actions")
+        logger.startSession(sessionId, category: .flowRecorder, message: "FlowPlayback: starting '\(flow.name)' from step \(effectiveStart) to \(effectiveEnd) — \(actionsToRun) actions")
 
         let profile = await PPSRStealthService.shared.nextProfile()
         let stealthJS = PPSRStealthService.shared.buildComprehensiveStealthJSPublic(profile: profile)
@@ -60,12 +63,12 @@ class FlowPlaybackEngine {
             logger.logError("FlowPlayback: stealth JS injection failed", error: error, category: .stealth, sessionId: sessionId)
         }
 
-        for index in effectiveStart..<flow.actions.count {
+        for (offset, index) in Array((effectiveStart..<effectiveEnd).enumerated()) {
             if cancelled { break }
 
             let action = flow.actions[index]
-            currentActionIndex = index
-            onProgress(index, flow.actions.count)
+            currentActionIndex = offset
+            onProgress(offset, actionsToRun)
 
             if action.deltaFromPreviousMs > 0 {
                 let delayMs = action.deltaFromPreviousMs
@@ -82,8 +85,8 @@ class FlowPlaybackEngine {
             }
         }
 
-        currentActionIndex = flow.actions.count
-        onProgress(flow.actions.count, flow.actions.count)
+        currentActionIndex = actionsToRun
+        onProgress(actionsToRun, actionsToRun)
         isPlaying = false
 
         let success = !cancelled

@@ -133,7 +133,12 @@ struct LoginCredentialDetailView: View {
 
             if credential.status == .noAcc || credential.status == .permDisabled || credential.status == .tempDisabled {
                 Button { vm.restoreCredential(credential) } label: { Label("Restore to Untested", systemImage: "arrow.counterclockwise") }
-                Button(role: .destructive) { vm.deleteCredential(credential) } label: { Label("Delete Permanently", systemImage: "trash") }
+                if vm.canBurnCredential(credential) {
+                    Button(role: .destructive) { vm.deleteCredential(credential) } label: { Label("Delete Permanently", systemImage: "trash") }
+                } else if let reason = vm.burnProtectionReason(for: credential) {
+                    Label(reason, systemImage: "shield.lefthalf.filled")
+                        .foregroundStyle(.orange)
+                }
             }
         }
     }

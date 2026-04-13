@@ -60,9 +60,9 @@
 - Add a save review sheet summarizing what changed before a new default is committed.
 
 **Step-by-step scope inside Release 2**
-- [ ] **Step 5:** add the credential burn policy engine with clearer protection modes.
-- [ ] **Step 6:** expand the visual flow studio timeline and partial re-recording tools.
-- [ ] **Step 7:** add the master save pipeline with validation, history, and human-readable summaries.
+- [x] **Step 5:** add the credential burn policy engine with clearer protection modes.
+- [x] **Step 6:** expand the visual flow studio timeline and partial re-recording tools.
+- [x] **Step 7:** add the master save pipeline with validation, history, and human-readable summaries.
 
 **Safety rules for Release 2**
 - Prefer recoverable saves over destructive overwrites.
