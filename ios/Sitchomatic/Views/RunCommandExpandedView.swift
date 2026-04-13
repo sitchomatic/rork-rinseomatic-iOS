@@ -19,6 +19,10 @@ struct RunCommandExpandedView: View {
                 failureAlert
             }
 
+            if vm.hasRuntimeSafetyState {
+                RuntimeSafetyPanelView(compact: true)
+            }
+
             controlRow
             expandButton
         }

@@ -277,6 +277,14 @@ class UnifiedSessionViewModel {
         startPauseCountdown()
     }
 
+    func pauseForBackgroundSafety() {
+        cancelPauseCountdown()
+        isPaused = true
+        pauseCountdown = 0
+        log("Background safety pause — unified batch frozen until you resume in app", level: .warning)
+        persistSessionsNow()
+    }
+
     func resumeBatch() {
         cancelPauseCountdown()
         isPaused = false

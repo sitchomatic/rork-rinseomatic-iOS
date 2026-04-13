@@ -955,6 +955,14 @@ class LoginViewModel {
         startPauseCountdown()
     }
 
+    func pauseForBackgroundSafety() {
+        cancelPauseCountdown()
+        isPaused = true
+        pauseCountdown = 0
+        log("Background safety pause — automation frozen until you resume in app", level: .warning)
+        persistCredentialsNow()
+    }
+
     func resumeQueue() {
         cancelPauseCountdown()
         isPaused = false

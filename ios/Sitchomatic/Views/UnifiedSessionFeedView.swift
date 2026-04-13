@@ -222,6 +222,10 @@ struct UnifiedSessionFeedView: View {
                         batchControls
                     }
 
+                    if RuntimeSafetyCenter.shared.hasVisibleState {
+                        RuntimeSafetyPanelView(compact: false)
+                    }
+
                     if !vm.isRunning {
                         concurrencyCapControl
                     }

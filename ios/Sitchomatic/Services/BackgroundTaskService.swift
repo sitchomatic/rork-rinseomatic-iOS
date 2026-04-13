@@ -1,6 +1,4 @@
-import BackgroundTasks
 import UIKit
-import ActivityKit
 
 @MainActor
 class BackgroundTaskService {
@@ -8,24 +6,18 @@ class BackgroundTaskService {
     static let batchProcessingIdentifier = "Sitchomatic.ios77.batchProcessing"
 
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
-    private var backgroundMonitorTimer: Timer?
     private var isInBackground: Bool = false
 
     func beginExtendedBackgroundExecution(reason: String) {
-        guard backgroundTask == .invalid else { return }
-        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: reason) { [weak self] in
-            self?.handleBackgroundTimeExpiring()
-        }
-        DebugLogger.shared.log("Background execution started: \(reason)", category: .system, level: .info)
-        startBackgroundMonitoring()
+        guard UIApplication.shared.applicationState != .active else { return }
+        performSafeStatePreservation(reason: reason, pausedAutomation: false)
     }
 
     func endExtendedBackgroundExecution() {
         guard backgroundTask != .invalid else { return }
-        stopBackgroundMonitoring()
         UIApplication.shared.endBackgroundTask(backgroundTask)
         backgroundTask = .invalid
-        DebugLogger.shared.log("Background execution ended", category: .system, level: .info)
+        DebugLogger.shared.log("Background preservation ended", category: .system, level: .info)
     }
 
     var isRunningInBackground: Bool {
@@ -38,107 +30,84 @@ class BackgroundTaskService {
 
     func handleAppDidEnterBackground() {
         isInBackground = true
-        let vm = RunCommandViewModel.shared
-
-        if vm.isAnyRunning {
-            beginExtendedBackgroundExecution(reason: "Batch processing in progress")
-
-            let siteMode: String
-            switch vm.activeMode {
-            case .login: siteMode = "unified"
-            case .ppsr: siteMode = "ppsr"
-            case .none: siteMode = "none"
-            }
-
-            LiveActivityService.shared.startActivity(
-                siteLabel: vm.siteLabel,
-                siteMode: siteMode,
-                totalCount: vm.totalCount
-            )
-        }
+        let pausedAutomation = pauseActiveAutomationForBackgroundSafety()
+        let reason = pausedAutomation
+            ? "App backgrounded — automation paused and state saved"
+            : "App backgrounded — state saved"
+        performSafeStatePreservation(reason: reason, pausedAutomation: pausedAutomation)
     }
 
     func handleAppWillEnterForeground() {
         isInBackground = false
-        LiveActivityService.shared.endActivity()
-
-        if isRunningInBackground {
-            endExtendedBackgroundExecution()
-        }
+        RuntimeSafetyCenter.shared.recordForegroundReturn()
+        endExtendedBackgroundExecution()
     }
 
     func handleBatchStarted() {
-        if isInBackground {
-            let vm = RunCommandViewModel.shared
-            let siteMode: String
-            switch vm.activeMode {
-            case .login: siteMode = "unified"
-            case .ppsr: siteMode = "ppsr"
-            case .none: siteMode = "none"
-            }
+        guard isInBackground else { return }
+        let pausedAutomation = pauseActiveAutomationForBackgroundSafety()
+        let reason = pausedAutomation
+            ? "Background batch request paused and saved for later resume"
+            : "Background batch request saved for later resume"
+        performSafeStatePreservation(reason: reason, pausedAutomation: pausedAutomation)
+    }
 
-            LiveActivityService.shared.startActivity(
-                siteLabel: vm.siteLabel,
-                siteMode: siteMode,
-                totalCount: vm.totalCount
-            )
+    func handleBatchEnded() {
+        endExtendedBackgroundExecution()
+    }
 
-            if !isRunningInBackground {
-                beginExtendedBackgroundExecution(reason: "Batch processing started while backgrounded")
+    private func beginBackgroundTaskIfNeeded(reason: String) {
+        guard backgroundTask == .invalid else { return }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: reason) { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.handleBackgroundTimeExpiring()
             }
         }
     }
 
-    func handleBatchEnded() {
-        LiveActivityService.shared.endActivity()
-    }
-
     private func handleBackgroundTimeExpiring() {
-        DebugLogger.shared.log("Background time expiring — persisting state", category: .system, level: .warning)
-
         PersistentFileStorageService.shared.forceSave()
         DebugLogger.shared.persistLatestLog()
         LoginViewModel.shared.persistCredentialsNow()
         PPSRAutomationViewModel.shared.persistCardsNow()
-
-        LiveActivityService.shared.updateActivity()
-
-        if backgroundTask != .invalid {
-            UIApplication.shared.endBackgroundTask(backgroundTask)
-            backgroundTask = .invalid
-        }
-        stopBackgroundMonitoring()
+        UnifiedSessionViewModel.shared.persistSessionsNow()
+        RuntimeSafetyCenter.shared.recordSafeSave(reason: "Background time expiring — state saved", pausedAutomation: true)
+        endExtendedBackgroundExecution()
     }
 
-    private func startBackgroundMonitoring() {
-        stopBackgroundMonitoring()
-        backgroundMonitorTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.checkBackgroundState()
-            }
-        }
+    private func performSafeStatePreservation(reason: String, pausedAutomation: Bool) {
+        beginBackgroundTaskIfNeeded(reason: reason)
+        PersistentFileStorageService.shared.forceSave()
+        DebugLogger.shared.persistLatestLog()
+        LoginViewModel.shared.persistCredentialsNow()
+        PPSRAutomationViewModel.shared.persistCardsNow()
+        UnifiedSessionViewModel.shared.persistSessionsNow()
+        RuntimeSafetyCenter.shared.recordSafeSave(reason: reason, pausedAutomation: pausedAutomation)
+        DebugLogger.shared.log(reason, category: .persistence, level: .info)
+        endExtendedBackgroundExecution()
     }
 
-    private func stopBackgroundMonitoring() {
-        backgroundMonitorTimer?.invalidate()
-        backgroundMonitorTimer = nil
-    }
+    private func pauseActiveAutomationForBackgroundSafety() -> Bool {
+        var pausedAutomation: Bool = false
 
-    private func checkBackgroundState() {
-        let remaining = remainingBackgroundTime
-        let vm = RunCommandViewModel.shared
-
-        if remaining < 30 && remaining != .greatestFiniteMagnitude {
-            DebugLogger.shared.log("Background time low: \(Int(remaining))s remaining", category: .system, level: .warning)
-
-            PersistentFileStorageService.shared.forceSave()
-            LoginViewModel.shared.persistCredentialsNow()
-            PPSRAutomationViewModel.shared.persistCardsNow()
+        let loginVM = LoginViewModel.shared
+        if loginVM.isRunning && !loginVM.isPaused {
+            loginVM.pauseForBackgroundSafety()
+            pausedAutomation = true
         }
 
-        if !vm.isAnyRunning && isRunningInBackground {
-            endExtendedBackgroundExecution()
-            LiveActivityService.shared.endActivity()
+        let ppsrVM = PPSRAutomationViewModel.shared
+        if ppsrVM.isRunning && !ppsrVM.isPaused {
+            ppsrVM.pauseForBackgroundSafety()
+            pausedAutomation = true
         }
+
+        let unifiedVM = UnifiedSessionViewModel.shared
+        if unifiedVM.isRunning && !unifiedVM.isPaused {
+            unifiedVM.pauseForBackgroundSafety()
+            pausedAutomation = true
+        }
+
+        return pausedAutomation
     }
 }

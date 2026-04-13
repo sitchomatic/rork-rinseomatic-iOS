@@ -15,6 +15,9 @@ struct RunCommandSheetView: View {
                     statsSection
                     controlSection
                     networkSection
+                    if vm.hasRuntimeSafetyState {
+                        RuntimeSafetyPanelView(compact: false)
+                    }
                     activeSessionsSection
                     recentFailuresSection
                 }

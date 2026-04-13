@@ -12,6 +12,9 @@ struct FlowRecorderView: View {
             if showURLInput && !vm.isRecording && !vm.isPlaying {
                 urlInputBar
             }
+            RuntimeSafetyPanelView(compact: true)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 6)
             webViewArea
             recordingControls
             statsBar

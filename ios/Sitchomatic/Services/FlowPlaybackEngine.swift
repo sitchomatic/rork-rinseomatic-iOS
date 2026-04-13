@@ -369,6 +369,15 @@ class FlowPlaybackEngine {
     }
 
     private func executeTabNavigation(_ action: RecordedAction, in webView: WKWebView) async -> Bool {
+        let result = await webView.safeEvalJS(JSInteractionBuilder.tabToPasswordJS(url: webView.url?.absoluteString))
+        if result == "CALIBRATED_PASSWORD_FALLBACK" || result == "GENERIC_PASSWORD_FALLBACK" {
+            RuntimeSafetyCenter.shared.recordFocusRecovery(reason: "Playback recovered password-field focus")
+            return true
+        }
+        if result == "TAB_TO_PASSWORD" {
+            return true
+        }
+
         let js = """
         (function(){
             var el = document.activeElement || document.body;
@@ -384,8 +393,8 @@ class FlowPlaybackEngine {
             return 'NO_BUTTON_FOUND';
         })()
         """
-        let result = await webView.safeEvalJS(js)
-        return result?.hasPrefix("CLICKED") == true
+        let buttonResult = await webView.safeEvalJS(js)
+        return buttonResult?.hasPrefix("CLICKED") == true
     }
 
     private func executeNativeSetterFill(selector: String, value: String, in webView: WKWebView) async -> Bool {

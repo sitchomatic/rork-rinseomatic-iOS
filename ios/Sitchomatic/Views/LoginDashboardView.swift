@@ -32,6 +32,7 @@ struct LoginDashboardView: View {
                     testingBanner
                     queueControls
                 }
+                RuntimeSafetyPanelView(compact: false)
                 if vm.stealthEnabled {
                     stealthBadge
                 }

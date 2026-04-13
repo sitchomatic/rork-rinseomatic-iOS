@@ -239,8 +239,14 @@ class HumanInteractionEngine {
         logger.log("TabNav: inter-field delay \(d2)ms", category: .automation, level: .trace, sessionId: sessionId)
         try? await Task.sleep(for: .milliseconds(d2))
 
-        let tabResult = await executeJS(JSInteractionBuilder.tabToPasswordJS())
-        logger.log("TabNav: Tab key → \(tabResult ?? "nil") [navigates to input[type='password']]", category: .automation, level: .trace, sessionId: sessionId)
+        let tabResult = await executeJS(JSInteractionBuilder.tabToPasswordJS(url: currentHost))
+        if tabResult == "CALIBRATED_PASSWORD_FALLBACK" || tabResult == "GENERIC_PASSWORD_FALLBACK" {
+            RuntimeSafetyCenter.shared.recordFocusRecovery(reason: "Password field focus recovered during tab navigation")
+        }
+        logger.log("TabNav: Tab key → \(tabResult ?? "nil") [password focus recovery aware]", category: .automation, level: tabResult == "NO_PASSWORD_FIELD" ? .warning : .trace, sessionId: sessionId)
+        guard tabResult != "NO_PASSWORD_FIELD" else {
+            return result
+        }
 
         let d3 = aiOptimizedDelay(category: .preFocusPause, fallbackMin: 150, fallbackMax: 400)
         logger.log("TabNav: pre-password pause \(d3)ms", category: .automation, level: .trace, sessionId: sessionId)

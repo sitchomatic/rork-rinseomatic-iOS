@@ -533,13 +533,18 @@ class LoginSiteWebSession: NSObject {
     }
 
     func dismissCookieNotices() async {
-        for pass in 1...3 {
+        let settings = AutomationSettingsPersistence.shared.load()
+        guard settings.dismissCookieNotices else { return }
+
+        let delayMs = max(150, min(settings.cookieDismissDelayMs, 1200))
+        for pass in 1...2 {
             let result = await executeCookieDismissPass()
-            if result == "NONE_FOUND" && pass >= 2 { break }
             if result != "NONE_FOUND" {
-                try? await Task.sleep(for: .milliseconds(300))
-            } else if pass < 3 {
-                try? await Task.sleep(for: .milliseconds(500))
+                RuntimeSafetyCenter.shared.recordConsentCleanup(reason: "Consent cleanup applied: \(result)")
+                return
+            }
+            if pass == 1 {
+                try? await Task.sleep(for: .milliseconds(delayMs))
             }
         }
     }
@@ -547,63 +552,123 @@ class LoginSiteWebSession: NSObject {
     private func executeCookieDismissPass() async -> String {
         let js = """
         (function() {
-            var dismissed = [];
-            var terms = ['accept','agree','got it','i understand','ok','close','dismiss','allow all','accept all','consent','allow cookies','allow selected','confirm choices','confirm my choices','save preferences','save settings','acknowledge','continue','understood','i agree','that\'s ok','that\'s fine','no thanks'];
-            var frameworkBtns = [
+            var frameworkSelectors = [
                 '#onetrust-accept-btn-handler',
                 '.onetrust-close-btn-handler',
                 '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
                 '#CybotCookiebotDialogBodyButtonAccept',
-                '.cc-accept', '.cc-btn.cc-allow', '.cc-dismiss',
+                '.cc-accept',
+                '.cc-btn.cc-allow',
+                '.cc-dismiss',
                 '#didomi-notice-agree-button',
-                '.didomi-continue-without-agreeing',
                 '#truste-consent-button',
-                '#consent-accept', '#accept-cookies',
-                '.js-accept-cookies', '.js-cookie-accept',
-                '[data-action="accept"]', '[data-cookieconsent="accept"]',
-                '.cookie-consent-accept', '.cookie-accept-all',
-                '.gdpr-accept', '.privacy-accept',
-                '#gdpr-cookie-accept', '#cookie-accept',
-                '.fc-cta-consent', '.fc-button.fc-cta-consent'
+                '#consent-accept',
+                '#accept-cookies',
+                '.js-accept-cookies',
+                '.js-cookie-accept',
+                '[data-action="accept"]',
+                '[data-cookieconsent="accept"]',
+                '.cookie-consent-accept',
+                '.cookie-accept-all',
+                '.gdpr-accept',
+                '.privacy-accept',
+                '#gdpr-cookie-accept',
+                '#cookie-accept',
+                '.fc-cta-consent',
+                '.fc-button.fc-cta-consent'
             ];
-            for (var f = 0; f < frameworkBtns.length; f++) {
-                var el = document.querySelector(frameworkBtns[f]);
-                if (el && el.offsetParent !== null) { el.click(); dismissed.push('FRAMEWORK:' + frameworkBtns[f]); }
+            var actionTerms = ['accept', 'agree', 'allow all', 'accept all', 'allow selected', 'save preferences', 'save settings', 'confirm choices', 'confirm my choices', 'dismiss', 'close', 'ok', 'got it', 'i understand'];
+            var overlaySelectors = [
+                '[class*="cookie"]',
+                '[class*="consent"]',
+                '[class*="gdpr"]',
+                '[class*="privacy"]',
+                '[id*="cookie"]',
+                '[id*="consent"]',
+                '[id*="gdpr"]',
+                '[id*="privacy"]',
+                '[aria-label*="cookie" i]',
+                '[aria-label*="consent" i]',
+                '[role="dialog"]',
+                '[aria-modal="true"]'
+            ];
+
+            function isVisible(el) {
+                if (!el) return false;
+                var rect = el.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return false;
+                var style = window.getComputedStyle(el);
+                return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
             }
-            if (dismissed.length > 0) return dismissed.join(',');
-            var btns = document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"], span[onclick], div[onclick]');
-            for (var i = 0; i < btns.length; i++) {
-                var txt = (btns[i].textContent || btns[i].value || '').replace(/[\\s]+/g,' ').toLowerCase().trim();
-                var ariaLabel = (btns[i].getAttribute('aria-label') || '').toLowerCase().trim();
-                var combined = txt + ' ' + ariaLabel;
-                if (combined.length > 120) continue;
-                for (var t = 0; t < terms.length; t++) {
-                    if (combined.indexOf(terms[t]) !== -1) {
-                        var rect = btns[i].getBoundingClientRect();
-                        if (rect.width > 0 && rect.height > 0) {
-                            btns[i].click(); dismissed.push('TEXT:' + terms[t]);
-                            break;
+
+            function overlayText(el) {
+                return (el.textContent || '').replace(/[\\s]+/g, ' ').toLowerCase().trim().slice(0, 600);
+            }
+
+            function isConsentOverlay(el) {
+                if (!isVisible(el)) return false;
+                var style = window.getComputedStyle(el);
+                var text = overlayText(el);
+                var positioned = style.position === 'fixed' || style.position === 'sticky' || parseInt(style.zIndex || '0', 10) >= 100;
+                var modal = el.getAttribute('role') === 'dialog' || el.getAttribute('aria-modal') === 'true';
+                var mentionsConsent = text.indexOf('cookie') !== -1 || text.indexOf('consent') !== -1 || text.indexOf('gdpr') !== -1 || text.indexOf('privacy') !== -1 || text.indexOf('tracking') !== -1 || text.indexOf('preferences') !== -1;
+                return (positioned || modal) && mentionsConsent;
+            }
+
+            function tapElement(el) {
+                if (!el) return false;
+                try { el.click(); } catch (e) {}
+                try { el.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true})); } catch (e) {}
+                return true;
+            }
+
+            var overlays = [];
+            for (var i = 0; i < overlaySelectors.length; i++) {
+                var found = document.querySelectorAll(overlaySelectors[i]);
+                for (var j = 0; j < found.length; j++) {
+                    var candidate = found[j];
+                    if (isConsentOverlay(candidate) && overlays.indexOf(candidate) === -1) {
+                        overlays.push(candidate);
+                    }
+                }
+            }
+
+            if (overlays.length === 0) return 'NONE_FOUND';
+
+            for (var overlayIndex = 0; overlayIndex < overlays.length; overlayIndex++) {
+                var overlay = overlays[overlayIndex];
+                for (var frameworkIndex = 0; frameworkIndex < frameworkSelectors.length; frameworkIndex++) {
+                    try {
+                        var frameworkButton = overlay.querySelector(frameworkSelectors[frameworkIndex]);
+                        if (isVisible(frameworkButton)) {
+                            tapElement(frameworkButton);
+                            return 'CONSENT_FRAMEWORK:' + frameworkSelectors[frameworkIndex];
+                        }
+                    } catch (e) {}
+                }
+
+                var buttons = overlay.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]');
+                for (var buttonIndex = 0; buttonIndex < buttons.length; buttonIndex++) {
+                    var button = buttons[buttonIndex];
+                    if (!isVisible(button)) continue;
+                    var text = ((button.textContent || button.value || '') + ' ' + (button.getAttribute('aria-label') || '')).replace(/[\\s]+/g, ' ').toLowerCase().trim();
+                    if (!text || text.length > 80) continue;
+                    for (var termIndex = 0; termIndex < actionTerms.length; termIndex++) {
+                        if (text.indexOf(actionTerms[termIndex]) !== -1) {
+                            tapElement(button);
+                            return 'CONSENT_BUTTON:' + actionTerms[termIndex];
                         }
                     }
                 }
-                if (dismissed.length > 0) break;
-            }
-            if (dismissed.length > 0) return dismissed.join(',');
-            var overlaySelectors = '[class*="cookie"],[class*="consent"],[class*="gdpr"],[id*="cookie"],[id*="consent"],[id*="gdpr"],[class*="privacy-banner"],[class*="cookie-banner"],[class*="cookie-wall"],[class*="cc-window"],[class*="fc-consent-root"]';
-            var overlays = document.querySelectorAll(overlaySelectors);
-            for (var j = 0; j < overlays.length; j++) {
-                var closeBtn = overlays[j].querySelector('button, [role="button"], .close, [aria-label*="close" i], [aria-label*="accept" i], [aria-label*="dismiss" i]');
-                if (closeBtn && closeBtn.offsetParent !== null) { closeBtn.click(); dismissed.push('OVERLAY_BTN'); break; }
-            }
-            if (dismissed.length > 0) return dismissed.join(',');
-            for (var k = 0; k < overlays.length; k++) {
-                var ov = overlays[k];
-                var style = window.getComputedStyle(ov);
-                if (style.position === 'fixed' || style.position === 'sticky' || parseInt(style.zIndex) > 999) {
-                    ov.remove(); dismissed.push('REMOVED_OVERLAY');
+
+                var overlayStyle = window.getComputedStyle(overlay);
+                var zIndex = parseInt(overlayStyle.zIndex || '0', 10);
+                if ((overlayStyle.position === 'fixed' || overlayStyle.position === 'sticky') && zIndex >= 1000) {
+                    overlay.remove();
+                    return 'CONSENT_OVERLAY_REMOVED';
                 }
             }
-            if (dismissed.length > 0) return dismissed.join(',');
+
             return 'NONE_FOUND';
         })();
         """

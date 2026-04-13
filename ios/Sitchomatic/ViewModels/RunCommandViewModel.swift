@@ -9,6 +9,7 @@ class RunCommandViewModel {
 
     private let loginVM = LoginViewModel.shared
     private let ppsrVM = PPSRAutomationViewModel.shared
+    private let runtimeSafety = RuntimeSafetyCenter.shared
 
     var isExpanded: Bool = false
     var showFullSheet: Bool = false
@@ -301,6 +302,30 @@ class RunCommandViewModel {
             return "Standard"
         case .none: return "--"
         }
+    }
+
+    var hasRuntimeSafetyState: Bool {
+        runtimeSafety.hasVisibleState
+    }
+
+    var lastSafeSaveLabel: String {
+        runtimeSafety.lastSafeSaveAt?.formatted(.relative(presentation: .named)) ?? "—"
+    }
+
+    var focusRecoveryLabel: String {
+        "\(runtimeSafety.focusRecoveryCount)"
+    }
+
+    var consentCleanupLabel: String {
+        "\(runtimeSafety.consentCleanupCount)"
+    }
+
+    var backgroundSafetyLabel: String {
+        runtimeSafety.backgroundPauseActive ? "Paused for resume" : "State saved"
+    }
+
+    var runtimeSafetyReason: String? {
+        runtimeSafety.latestStatusMessage
     }
 
     func pauseQueue() {

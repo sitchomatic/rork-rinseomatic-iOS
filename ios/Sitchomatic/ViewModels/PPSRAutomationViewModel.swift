@@ -1097,6 +1097,14 @@ class PPSRAutomationViewModel {
         startPauseCountdown()
     }
 
+    func pauseForBackgroundSafety() {
+        cancelPauseCountdown()
+        isPaused = true
+        pauseCountdown = 0
+        log("Background safety pause — automation frozen until you resume in app", level: .warning)
+        persistCardsNow()
+    }
+
     func resumeQueue() {
         cancelPauseCountdown()
         isPaused = false

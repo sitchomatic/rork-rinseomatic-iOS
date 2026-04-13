@@ -85,9 +85,9 @@
 - Add a small recovery panel showing why a page needed focus recovery or consent cleanup.
 
 **Step-by-step scope inside Release 3**
-- [ ] **Step 8:** keep background handling limited to safe state preservation only.
-- [ ] **Step 9:** add calibrated password-field fallback heuristics.
-- [ ] **Step 10:** add tightly constrained cookie and consent handling.
+- [x] **Step 8:** keep background handling limited to safe state preservation only.
+- [x] **Step 9:** add calibrated password-field fallback heuristics.
+- [x] **Step 10:** add tightly constrained cookie and consent handling.
 
 **Safety rules for Release 3**
 - No real background automation beyond safe saving.

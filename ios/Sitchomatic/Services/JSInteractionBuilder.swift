@@ -7,6 +7,11 @@ struct JSInteractionBuilder {
         text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'").replacingOccurrences(of: "\n", with: "\\n")
     }
 
+    static func serializeJSArray(_ values: [String]) -> String {
+        let serialized = values.map { "'\(escapeJS($0))'" }.joined(separator: ",")
+        return "[\(serialized)]"
+    }
+
     static let findEmailFieldJS: String = """
         var el = document.querySelector('input[type="email"]')
             || document.querySelector('input[autocomplete="email"]')
@@ -101,22 +106,108 @@ struct JSInteractionBuilder {
         """
     }
 
-    static func tabToPasswordJS() -> String {
-        """
+    static func tabToPasswordJS(url: String? = nil) -> String {
+        let calibration = url.flatMap { LoginCalibrationService.shared.calibrationFor(url: $0) }
+        var calibratedSelectors: [String] = []
+        if let selector = calibration?.passwordField?.cssSelector, !selector.isEmpty {
+            calibratedSelectors.append(selector)
+        }
+        if let fallbackSelectors = calibration?.passwordField?.fallbackSelectors {
+            calibratedSelectors.append(contentsOf: fallbackSelectors.filter { !$0.isEmpty })
+        }
+        var uniqueCalibratedSelectors: [String] = []
+        for selector in calibratedSelectors where !uniqueCalibratedSelectors.contains(selector) {
+            uniqueCalibratedSelectors.append(selector)
+        }
+
+        let genericSelectors: [String] = [
+            "input[type='password']",
+            "input[autocomplete='current-password']",
+            "input[name*='pass' i]",
+            "input[id*='pass' i]",
+            "input[placeholder*='pass' i]"
+        ]
+
+        return """
         (function(){
-            var active = document.activeElement;
+            var calibratedSelectors = \(serializeJSArray(uniqueCalibratedSelectors));
+            var genericSelectors = \(serializeJSArray(genericSelectors));
+
+            function isPasswordLike(el) {
+                if (!el || !el.tagName) return false;
+                var tagName = el.tagName.toLowerCase();
+                if (tagName !== 'input' && tagName !== 'textarea') return false;
+                var type = (el.type || '').toLowerCase();
+                var autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
+                var name = (el.getAttribute('name') || '').toLowerCase();
+                var id = (el.id || '').toLowerCase();
+                var placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
+                return type === 'password'
+                    || autocomplete.indexOf('current-password') !== -1
+                    || autocomplete.indexOf('password') !== -1
+                    || name.indexOf('pass') !== -1
+                    || id.indexOf('pass') !== -1
+                    || placeholder.indexOf('pass') !== -1;
+            }
+
+            function focusField(el, mode) {
+                if (!el) return 'NO_PASSWORD_FIELD';
+                try { el.scrollIntoView({behavior:'instant', block:'center'}); } catch (e) {}
+                var rect = el.getBoundingClientRect();
+                var x = rect.left + Math.max(8, Math.min(rect.width - 8, rect.width * 0.42));
+                var y = rect.top + Math.max(8, Math.min(rect.height - 8, rect.height * 0.55));
+                try {
+                    var hit = document.elementFromPoint(x, y);
+                    if (hit && hit !== el && hit.querySelector) {
+                        var nested = hit.querySelector('input[type="password"],input[autocomplete="current-password"],input[name*="pass" i],input[id*="pass" i],input[placeholder*="pass" i]');
+                        if (nested) {
+                            el = nested;
+                        }
+                    }
+                } catch (e) {}
+                try { el.focus(); } catch (e) {}
+                try { el.click(); } catch (e) {}
+                try { el.dispatchEvent(new Event('focus', {bubbles:true})); } catch (e) {}
+                try { el.dispatchEvent(new Event('focusin', {bubbles:true})); } catch (e) {}
+                try {
+                    el.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,clientX:x,clientY:y,pointerId:1,pointerType:'touch'}));
+                    el.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,cancelable:true,clientX:x,clientY:y,pointerId:1,pointerType:'touch'}));
+                } catch (e) {}
+                return mode;
+            }
+
+            var active = document.activeElement || document.body;
             if (active) {
-                active.dispatchEvent(new KeyboardEvent('keydown', {key:'Tab',code:'Tab',keyCode:9,which:9,bubbles:true,cancelable:true}));
-                active.dispatchEvent(new KeyboardEvent('keyup', {key:'Tab',code:'Tab',keyCode:9,which:9,bubbles:true}));
+                try {
+                    active.dispatchEvent(new KeyboardEvent('keydown', {key:'Tab',code:'Tab',keyCode:9,which:9,bubbles:true,cancelable:true}));
+                    active.dispatchEvent(new KeyboardEvent('keyup', {key:'Tab',code:'Tab',keyCode:9,which:9,bubbles:true}));
+                } catch (e) {}
             }
-            var passField = document.querySelector('input[type="password"]');
-            if (passField) {
-                passField.focus();
-                passField.click();
-                passField.dispatchEvent(new Event('focus', {bubbles:true}));
-                return 'TAB_TO_PASS';
+
+            var activeAfterTab = document.activeElement;
+            if (isPasswordLike(activeAfterTab)) {
+                return 'TAB_TO_PASSWORD';
             }
-            return 'TAB_SENT';
+
+            for (var i = 0; i < calibratedSelectors.length; i++) {
+                try {
+                    var calibratedField = document.querySelector(calibratedSelectors[i]);
+                    if (isPasswordLike(calibratedField)) {
+                        return focusField(calibratedField, 'CALIBRATED_PASSWORD_FALLBACK');
+                    }
+                } catch (e) {}
+            }
+
+            for (var j = 0; j < genericSelectors.length; j++) {
+                try {
+                    var genericField = document.querySelector(genericSelectors[j]);
+                    if (isPasswordLike(genericField)) {
+                        return focusField(genericField, 'GENERIC_PASSWORD_FALLBACK');
+                    }
+                } catch (e) {}
+            }
+
+            return 'NO_PASSWORD_FIELD';
         })()
         """
     }
