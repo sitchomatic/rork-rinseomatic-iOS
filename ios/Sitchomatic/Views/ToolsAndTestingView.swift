@@ -65,6 +65,12 @@ struct ToolsAndTestingView: View {
                         subtitle: "Known account optimizer — multi-session testing", color: .mint)
             }
             NavigationLink {
+                UnifiedScreenshotFeedView()
+            } label: {
+                toolRow(icon: "photo.stack.fill", title: "Shared Screenshot Feed",
+                        subtitle: "Density controls, storage health, and retained history", color: .cyan)
+            }
+            NavigationLink {
                 LoginDebugScreenshotsView(vm: LoginViewModel.shared)
             } label: {
                 toolRow(icon: "camera.viewfinder", title: "Debug Screenshots",

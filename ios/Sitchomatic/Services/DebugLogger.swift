@@ -86,6 +86,7 @@ class DebugLogger {
             detail: detail, sessionId: sessionId, durationMs: durationMs, metadata: metadata
         )
         pendingEntries.append(entry)
+        AutomationFoundationStore.shared.recordLoggerEvent(entry)
         level >= .error ? flushPendingEntries() : scheduleFlush()
     }
 

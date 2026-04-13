@@ -3,11 +3,48 @@ import UIKit
 
 struct UnifiedScreenshotFeedView: View {
     @State private var manager = UnifiedScreenshotManager.shared
+    @State private var foundationStore = AutomationFoundationStore.shared
     @State private var selectedScreenshot: UnifiedScreenshot?
     @State private var filterOption: ScreenshotFilterOption = .all
     @State private var showStats: Bool = false
     @State private var showClearConfirm: Bool = false
     @State private var showFullImage: Bool = false
+    @State private var feedDensity: ScreenshotFeedDensity = .twoUp
+
+    nonisolated enum ScreenshotFeedDensity: String, CaseIterable, Identifiable, Sendable {
+        case focus = "Focus"
+        case twoUp = "2-Up"
+        case compact = "Compact"
+
+        var id: String { rawValue }
+
+        var columns: [GridItem] {
+            switch self {
+            case .focus:
+                [GridItem(.flexible())]
+            case .twoUp:
+                [GridItem(.flexible()), GridItem(.flexible())]
+            case .compact:
+                [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+            }
+        }
+
+        var tileHeight: CGFloat {
+            switch self {
+            case .focus: 220
+            case .twoUp: 168
+            case .compact: 122
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .focus: "rectangle"
+            case .twoUp: "square.grid.2x2"
+            case .compact: "square.grid.3x2"
+            }
+        }
+    }
 
     nonisolated enum ScreenshotFilterOption: String, CaseIterable, Identifiable, Sendable {
         case all = "All"
@@ -74,34 +111,53 @@ struct UnifiedScreenshotFeedView: View {
                 filterBar
             }
 
+            storageHealthCard
+
             if showStats {
                 analysisStatsCard
             }
 
             ScrollView {
-                LazyVStack(spacing: 10) {
-                    if manager.screenshots.isEmpty {
-                        emptyState
-                    } else if filteredScreenshots.isEmpty {
-                        noMatchesState
-                    } else {
+                if manager.screenshots.isEmpty {
+                    emptyState
+                        .padding(.horizontal)
+                        .padding(.vertical, 12)
+                        .padding(.bottom, 24)
+                } else if filteredScreenshots.isEmpty {
+                    noMatchesState
+                        .padding(.horizontal)
+                        .padding(.vertical, 12)
+                        .padding(.bottom, 24)
+                } else {
+                    LazyVGrid(columns: feedDensity.columns, spacing: 10) {
                         ForEach(filteredScreenshots) { screenshot in
                             Button { selectedScreenshot = screenshot } label: {
-                                ScreenshotTile(screenshot: screenshot)
+                                ScreenshotTile(screenshot: screenshot, imageHeight: feedDensity.tileHeight)
                             }
                             .buttonStyle(.plain)
                         }
                     }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                    .padding(.bottom, 24)
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 12)
-                .padding(.bottom, 24)
             }
         }
         .background(Color(.systemGroupedBackground))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Menu("Feed Density") {
+                        ForEach(ScreenshotFeedDensity.allCases) { density in
+                            Button {
+                                withAnimation(.spring(duration: 0.25)) {
+                                    feedDensity = density
+                                }
+                            } label: {
+                                Label(density.rawValue, systemImage: density.icon)
+                            }
+                        }
+                    }
                     Button { withAnimation(.snappy) { showStats.toggle() } } label: {
                         Label(showStats ? "Hide AI Stats" : "Show AI Stats", systemImage: "cpu")
                     }
@@ -124,6 +180,76 @@ struct UnifiedScreenshotFeedView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will remove all \(manager.screenshots.count) screenshot(s). This cannot be undone.")
+        }
+        .onAppear {
+            foundationStore.refreshStorageHealth(currentSessionScreenshotCount: manager.screenshots.count)
+        }
+    }
+
+    private var storageHealthCard: some View {
+        let health = foundationStore.storageHealth
+        return VStack(spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Foundation Storage")
+                        .font(.subheadline.bold())
+                    Text("Release 1 screenshot density, dedupe, and retention")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                HStack(spacing: 6) {
+                    ForEach(ScreenshotFeedDensity.allCases) { density in
+                        Button {
+                            withAnimation(.spring(duration: 0.25)) {
+                                feedDensity = density
+                            }
+                        } label: {
+                            Image(systemName: density.icon)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(feedDensity == density ? .white : .secondary)
+                                .frame(width: 30, height: 30)
+                                .background(feedDensity == density ? Color.blue : Color(.tertiarySystemGroupedBackground))
+                                .clipShape(.circle)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                AIStatPill(value: "\(health.currentSessionScreenshotCount)", label: "Live", color: .blue)
+                AIStatPill(value: "\(health.screenshotHistoryCount)", label: "Retained", color: .indigo)
+                AIStatPill(value: "\(health.deduplicatedScreenshotCount)", label: "Deduped", color: .purple)
+                AIStatPill(value: "\(health.screenshotRetentionLimit)", label: "Limit", color: .orange)
+            }
+
+            HStack(spacing: 12) {
+                metadataHealthRow(icon: "clock.arrow.circlepath", title: "Last Shot", value: health.lastScreenshotAt?.formatted(.relative(presentation: .named)) ?? "—")
+                metadataHealthRow(icon: "waveform.path.ecg", title: "Last Log", value: health.lastTelemetryAt?.formatted(.relative(presentation: .named)) ?? "—")
+                Spacer()
+            }
+        }
+        .padding(12)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(.rect(cornerRadius: 14))
+        .padding(.horizontal)
+        .padding(.top, 10)
+    }
+
+    private func metadataHealthRow(icon: String, title: String, value: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                Text(value)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -254,11 +380,12 @@ struct UnifiedScreenshotFeedView: View {
 
 struct ScreenshotTile: View {
     let screenshot: UnifiedScreenshot
+    let imageHeight: CGFloat
 
     var body: some View {
         VStack(spacing: 0) {
             Color(.secondarySystemBackground)
-                .frame(height: 160)
+                .frame(height: imageHeight)
                 .overlay {
                     Image(uiImage: screenshot.displayImage)
                         .resizable()

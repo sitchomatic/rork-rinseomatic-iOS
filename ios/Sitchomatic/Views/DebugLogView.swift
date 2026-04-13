@@ -4,6 +4,7 @@ import UIKit
 
 struct DebugLogView: View {
     private let logger = DebugLogger.shared
+    @State private var foundationStore = AutomationFoundationStore.shared
     @State private var selectedCategories: Set<DebugLogCategory> = Set(DebugLogCategory.allCases)
     @State private var selectedLevel: DebugLogLevel = .trace
     @State private var searchText: String = ""
@@ -38,6 +39,7 @@ struct DebugLogView: View {
     var body: some View {
         VStack(spacing: 0) {
             filterBar
+            telemetryStrip
             logList
             bottomBar
         }
@@ -73,6 +75,7 @@ struct DebugLogView: View {
                     Divider()
                     Button(role: .destructive) {
                         logger.clearAll()
+                        foundationStore.clearTelemetryHistory()
                         refreshTrigger += 1
                     } label: {
                         Label("Clear All Logs", systemImage: "trash")
@@ -97,7 +100,56 @@ struct DebugLogView: View {
             }
         }
         .onReceive(logger.didChange.throttle(for: .seconds(1), scheduler: DispatchQueue.main, latest: true)) { _ in
+            foundationStore.refreshStorageHealth(currentSessionScreenshotCount: UnifiedScreenshotManager.shared.screenshots.count)
             refreshTrigger += 1
+        }
+        .onAppear {
+            foundationStore.refreshAllSnapshots()
+        }
+    }
+
+    private var telemetryStrip: some View {
+        Group {
+            if !foundationStore.recentTelemetry.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(foundationStore.recentTelemetry.prefix(18)) { item in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: item.category.icon)
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text(item.category.rawValue.uppercased())
+                                        .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                                }
+                                .foregroundStyle(categoryColor(item.category))
+
+                                Text(item.message)
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+
+                                HStack(spacing: 6) {
+                                    Text("Δ \(item.deltaMs)ms")
+                                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(.orange)
+                                    if let durationMs = item.durationMs {
+                                        Text("• \(durationMs)ms")
+                                            .font(.system(size: 8, weight: .medium, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .frame(width: 190, alignment: .leading)
+                            .padding(10)
+                            .background(Color(.secondarySystemGroupedBackground))
+                            .clipShape(.rect(cornerRadius: 12))
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                .background(Color(.systemGroupedBackground))
+            }
         }
     }
 

@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct SavedFlowsView: View {
     @Bindable var vm: FlowRecorderViewModel
+    @State private var foundationStore = AutomationFoundationStore.shared
     @State private var expandedFlowId: String?
     @State private var exportData: Data?
     @State private var showExportShare: Bool = false
@@ -19,6 +20,9 @@ struct SavedFlowsView: View {
         }
         .navigationTitle("Saved Flows")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            foundationStore.syncFlows(vm.savedFlows)
+        }
     }
 
     private var emptyState: some View {
@@ -88,6 +92,10 @@ struct SavedFlowsView: View {
                 Text(flow.createdAt, style: .relative)
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
+            }
+
+            if let metadata = foundationStore.flowMetadataByID[flow.id] {
+                flowMetadataRow(metadata)
             }
 
             if !flow.textboxMappings.isEmpty {
@@ -208,12 +216,14 @@ struct SavedFlowsView: View {
                             if let idx = vm.savedFlows.firstIndex(where: { $0.id == updated.id }) {
                                 vm.savedFlows[idx] = updated
                                 FlowPersistenceService.shared.saveFlows(vm.savedFlows)
+                                foundationStore.syncFlows(vm.savedFlows)
                             }
                             showEditingStudio = false
                         },
                         onDuplicate: { copy in
                             vm.savedFlows.insert(copy, at: 0)
                             FlowPersistenceService.shared.saveFlows(vm.savedFlows)
+                            foundationStore.syncFlows(vm.savedFlows)
                             showEditingStudio = false
                         }
                     )
@@ -223,6 +233,33 @@ struct SavedFlowsView: View {
                 .presentationContentInteraction(.scrolls)
             }
         }
+    }
+
+    private func flowMetadataRow(_ metadata: AutomationFlowMetadataSnapshot) -> some View {
+        HStack(spacing: 8) {
+            metadataPill(icon: "square.stack.3d.up.fill", text: "v\(metadata.version)", color: .indigo)
+            metadataPill(icon: "brain.head.profile", text: "AI \(metadata.repairConfidencePercentage)%", color: .purple)
+            if let lastHealedAt = metadata.lastHealedAt {
+                metadataPill(icon: "wand.and.stars", text: lastHealedAt.formatted(.relative(presentation: .named)), color: .mint)
+            } else {
+                metadataPill(icon: "checklist", text: "Manual only", color: .secondary)
+            }
+            Spacer()
+        }
+    }
+
+    private func metadataPill(icon: String, text: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 8, weight: .bold))
+            Text(text)
+                .font(.system(size: 9, weight: .heavy, design: .monospaced))
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(color.opacity(0.12))
+        .clipShape(Capsule())
     }
 
     private func flowStat(icon: String, value: String, label: String) -> some View {

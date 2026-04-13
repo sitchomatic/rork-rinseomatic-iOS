@@ -76,6 +76,7 @@ class FlowRecorderViewModel {
 
     init() {
         savedFlows = persistence.loadFlows()
+        AutomationFoundationStore.shared.syncFlows(savedFlows)
     }
 
     func startRecording() {
@@ -138,6 +139,7 @@ class FlowRecorderViewModel {
     func appendActions(_ actions: [RecordedAction]) {
         guard !actions.isEmpty else { return }
         currentActions.append(contentsOf: actions)
+        AutomationFoundationStore.shared.recordRecordedActions(actions, url: targetURL)
     }
 
     func handlePageLoaded(_ title: String) {
@@ -175,6 +177,7 @@ class FlowRecorderViewModel {
 
         savedFlows.insert(flow, at: 0)
         persistence.saveFlows(savedFlows)
+        AutomationFoundationStore.shared.syncFlowMetadata(flow)
         flowName = ""
         showSaveSheet = false
         statusMessage = "Flow '\(name)' saved — \(flow.actionCount) actions"
@@ -192,6 +195,7 @@ class FlowRecorderViewModel {
             savedFlows[idx] = updatedFlow
         }
         persistence.saveFlows(savedFlows)
+        AutomationFoundationStore.shared.syncFlowMetadata(updatedFlow)
         statusMessage = "Flow '\(flow.name)' updated — merged \(currentActions.count) new actions from step \(fromStep)"
         currentActions = []
     }
@@ -199,6 +203,7 @@ class FlowRecorderViewModel {
     func deleteFlow(_ flow: RecordedFlow) {
         savedFlows.removeAll { $0.id == flow.id }
         persistence.saveFlows(savedFlows)
+        AutomationFoundationStore.shared.deleteFlowMetadata(flowID: flow.id)
     }
 
     func selectFlowForPlayback(_ flow: RecordedFlow) {
@@ -342,6 +347,7 @@ class FlowRecorderViewModel {
         if let flow = persistence.importFlow(from: data) {
             savedFlows.insert(flow, at: 0)
             persistence.saveFlows(savedFlows)
+            AutomationFoundationStore.shared.syncFlowMetadata(flow)
             statusMessage = "Imported '\(flow.name)'"
         } else {
             lastError = "Failed to import flow — invalid data format"

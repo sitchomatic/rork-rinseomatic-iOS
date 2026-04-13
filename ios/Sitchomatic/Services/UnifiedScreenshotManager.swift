@@ -14,6 +14,7 @@ class UnifiedScreenshotManager {
     private let visionCrop = VisionTextCropService.shared
     private let dedup = ScreenshotDedupService.shared
     private let logger = DebugLogger.shared
+    private let foundationStore = AutomationFoundationStore.shared
 
     struct AnalysisStats {
         var totalCaptured: Int = 0
@@ -46,13 +47,15 @@ class UnifiedScreenshotManager {
     ) async {
         analysisStats.totalCaptured += 1
 
-        if dedup.isDuplicate(image) {
+        let compressedData = compressToData(image)
+        let hashValue = foundationStore.hashString(for: compressedData)
+        if foundationStore.containsScreenshotHash(hashValue) || dedup.isDuplicate(image) {
             analysisStats.duplicatesSkipped += 1
             logger.log("UnifiedScreenshots: duplicate skipped for \(credentialEmail) step=\(step.rawValue)", category: .screenshot, level: .trace)
+            foundationStore.refreshStorageHealth(currentSessionScreenshotCount: screenshots.count)
             return
         }
 
-        let compressedData = compressToData(image)
         let compressedImage = UIImage(data: compressedData) ?? image
 
         var analysis: VisionTextCropService.AnalysisResult?
@@ -98,6 +101,19 @@ class UnifiedScreenshotManager {
             let overflow = screenshots.count - maxScreenshots
             screenshots.removeLast(overflow)
         }
+
+        _ = foundationStore.recordScreenshotMetadata(
+            screenshotHash: hashValue,
+            sessionId: sessionId,
+            credentialEmail: credentialEmail,
+            site: site,
+            stepRawValue: step.rawValue,
+            attemptNumber: attemptNumber,
+            isCrucial: screenshot.isCrucial,
+            visionConfidence: screenshot.visionConfidence,
+            analysisTimeMs: screenshot.analysisTimeMs,
+            currentSessionScreenshotCount: screenshots.count
+        )
 
         let crucialInfo = analysis.flatMap { $0.crucialMatches.isEmpty ? nil : " CRUCIAL:\($0.crucialMatches.joined(separator: ","))" } ?? ""
         logger.log("UnifiedScreenshots: captured \(step.rawValue) for \(credentialEmail) site=\(site) attempt=\(attemptNumber)\(crucialInfo)", category: .screenshot, level: crucialInfo.isEmpty ? .debug : .info)
@@ -116,6 +132,14 @@ class UnifiedScreenshotManager {
         analysisStats.totalCaptured += 1
 
         let compressedData = compressToData(image)
+        let hashValue = foundationStore.hashString(for: compressedData)
+        if foundationStore.containsScreenshotHash(hashValue) || dedup.isDuplicate(image) {
+            analysisStats.duplicatesSkipped += 1
+            logger.log("UnifiedScreenshots: duplicate skipped for \(credentialEmail) step=\(step.rawValue)", category: .screenshot, level: .trace)
+            foundationStore.refreshStorageHealth(currentSessionScreenshotCount: screenshots.count)
+            return
+        }
+
         let compressedImage = UIImage(data: compressedData) ?? image
 
         var analysis: VisionTextCropService.AnalysisResult?
@@ -161,6 +185,19 @@ class UnifiedScreenshotManager {
             let overflow = screenshots.count - maxScreenshots
             screenshots.removeLast(overflow)
         }
+
+        _ = foundationStore.recordScreenshotMetadata(
+            screenshotHash: hashValue,
+            sessionId: sessionId,
+            credentialEmail: credentialEmail,
+            site: site,
+            stepRawValue: step.rawValue,
+            attemptNumber: attemptNumber,
+            isCrucial: screenshot.isCrucial,
+            visionConfidence: screenshot.visionConfidence,
+            analysisTimeMs: screenshot.analysisTimeMs,
+            currentSessionScreenshotCount: screenshots.count
+        )
 
         let crucialInfo = analysis.flatMap { $0.crucialMatches.isEmpty ? nil : " CRUCIAL:\($0.crucialMatches.joined(separator: ","))" } ?? ""
         logger.log("UnifiedScreenshots: direct captured \(step.rawValue) for \(credentialEmail) site=\(site) attempt=\(attemptNumber)\(crucialInfo)", category: .screenshot, level: crucialInfo.isEmpty ? .debug : .info)
@@ -187,11 +224,13 @@ class UnifiedScreenshotManager {
         screenshots.removeAll()
         dedup.resetAll()
         analysisStats = AnalysisStats()
+        foundationStore.clearScreenshotHistory()
         logger.log("UnifiedScreenshots: cleared \(count) screenshots", category: .screenshot, level: .info)
     }
 
     func clearForSession(_ sessionId: String) {
         screenshots.removeAll { $0.sessionId == sessionId }
+        foundationStore.refreshStorageHealth(currentSessionScreenshotCount: screenshots.count)
     }
 
     func smartReduceForClearResult(sessionId: String) {
@@ -213,6 +252,7 @@ class UnifiedScreenshotManager {
         let removed = before - screenshots.count
         if removed > 0 {
             logger.log("UnifiedScreenshots: smart-reduced to \(kept.count) screenshots (1/site) for clear result — purged \(removed)", category: .screenshot, level: .info)
+            foundationStore.refreshStorageHealth(currentSessionScreenshotCount: screenshots.count)
         }
     }
 
@@ -225,6 +265,7 @@ class UnifiedScreenshotManager {
         let removed = before - screenshots.count
         if removed > 0 {
             logger.log("UnifiedScreenshots: disabled override — purged \(removed) non-critical screenshots for session", category: .screenshot, level: .info)
+            foundationStore.refreshStorageHealth(currentSessionScreenshotCount: screenshots.count)
         }
     }
 
@@ -239,6 +280,7 @@ class UnifiedScreenshotManager {
         let removed = before - screenshots.count
         if removed > 0 {
             logger.log("UnifiedScreenshots: priority pruned \(removed) screenshots (kept \(limit)) for session", category: .screenshot, level: .debug)
+            foundationStore.refreshStorageHealth(currentSessionScreenshotCount: screenshots.count)
         }
     }
 
@@ -248,6 +290,7 @@ class UnifiedScreenshotManager {
             screenshots = Array(screenshots.prefix(keep))
         }
         ScreenshotImageCache.shared.clearAll()
+        foundationStore.refreshStorageHealth(currentSessionScreenshotCount: screenshots.count)
     }
 
     private func compressToData(_ image: UIImage) -> Data {
