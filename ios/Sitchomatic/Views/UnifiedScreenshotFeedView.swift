@@ -111,9 +111,10 @@ struct UnifiedScreenshotFeedView: View {
         let uncategorized = filteredScreenshots.filter { $0.credentialEmail.isEmpty }
         if !uncategorized.isEmpty {
             result.append(UnifiedScreenshotAlbum(
-                credentialEmail: "(Uncategorized)",
+                credentialEmail: "Uncategorized",
                 screenshots: uncategorized.sorted { $0.timestamp > $1.timestamp }
             ))
+            result.sort { $0.latestTimestamp > $1.latestTimestamp }
         }
         return result
     }
