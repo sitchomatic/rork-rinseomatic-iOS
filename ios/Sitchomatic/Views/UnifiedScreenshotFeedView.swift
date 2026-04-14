@@ -110,10 +110,10 @@ struct UnifiedScreenshotFeedView: View {
         // Include screenshots without a credential email in an "Uncategorized" album
         let uncategorized = filteredScreenshots.filter { $0.credentialEmail.isEmpty }
         if !uncategorized.isEmpty {
-            result.append(UnifiedScreenshotAlbum(
-                credentialEmail: "",
-                screenshots: uncategorized.sorted { $0.timestamp > $1.timestamp }
-            ))
+                                    result.append(UnifiedScreenshotAlbum(
+                                        credentialEmail: "(Uncategorized)",
+                                        screenshots: uncategorized.sorted { $0.timestamp > $1.timestamp }
+                                    ))
         }
         return result
     }
