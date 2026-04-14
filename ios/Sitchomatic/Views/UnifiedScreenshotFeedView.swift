@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-struct UnifiedScreenshotFeedView: View {
+import SwiftUI
     @State private var manager = UnifiedScreenshotManager.shared
     @State private var foundationStore = AutomationFoundationStore.shared
     @State private var selectedScreenshot: UnifiedScreenshot?
