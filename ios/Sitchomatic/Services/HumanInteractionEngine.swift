@@ -948,6 +948,13 @@ class HumanInteractionEngine {
         return settings.emailSelector(for: site)
     }
 
+    private func resolveSitePasswordSelector(sessionId: String) -> String {
+        let settings = AutomationSettingsPersistence.shared.load()
+        let isJoeSite = currentHost.lowercased().contains("joe") || sessionId.lowercased().contains("joe")
+        let site: LoginTargetSite = isJoeSite ? .joefortune : .ignition
+        return settings.passwordSelector(for: site)
+    }
+
     private func verifyAndCleanPasswordField(username: String, emailSelector: String, passwordSelector: String, executeJS: @escaping (String) async -> String?, sessionId: String) async -> Bool {
         let currentValue = await executeJS(JSInteractionBuilder.readFieldValueJS(selector: passwordSelector))
         var contaminated = false
