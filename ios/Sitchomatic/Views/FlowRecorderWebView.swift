@@ -125,6 +125,18 @@ struct FlowRecorderWebView: UIViewRepresentable {
                 return label;
             }
 
+            function getLabelText(el) {
+                if (!el) return '';
+                if (el.id) {
+                    var label = document.querySelector('label[for="' + el.id + '"]');
+                    if (label && label.innerText) return label.innerText.trim();
+                }
+                var parentLabel = el.closest('label');
+                if (parentLabel && parentLabel.innerText) return parentLabel.innerText.trim();
+                if (el.getAttribute('aria-label')) return el.getAttribute('aria-label').trim();
+                return '';
+            }
+
             function isTextInput(el) {
                 if (!el || !el.tagName) return false;
                 var tag = el.tagName.toLowerCase();
@@ -181,8 +193,13 @@ struct FlowRecorderWebView: UIViewRepresentable {
                         action.targetSelector = getSelector(evt.target);
                         action.targetTagName = evt.target.tagName ? evt.target.tagName.toLowerCase() : '';
                         action.targetType = evt.target.type || '';
+                        action.targetName = evt.target.name || '';
+                        action.targetId = evt.target.id || '';
+                        action.targetPlaceholder = evt.target.placeholder || '';
+                        action.targetAutocomplete = evt.target.autocomplete || '';
                         if (isTextInput(evt.target)) {
                             action.textboxLabel = getTextboxLabel(evt.target);
+                            action.targetLabelText = getLabelText(evt.target);
                         }
                     }
 
@@ -438,6 +455,11 @@ struct FlowRecorderWebView: UIViewRepresentable {
                         targetSelector: dict["targetSelector"] as? String,
                         targetTagName: dict["targetTagName"] as? String,
                         targetType: dict["targetType"] as? String,
+                        targetName: dict["targetName"] as? String,
+                        targetId: dict["targetId"] as? String,
+                        targetPlaceholder: dict["targetPlaceholder"] as? String,
+                        targetAutocomplete: dict["targetAutocomplete"] as? String,
+                        targetLabelText: dict["targetLabelText"] as? String,
                         textboxLabel: dict["textboxLabel"] as? String,
                         textContent: dict["textContent"] as? String,
                         button: dict["button"] as? Int,

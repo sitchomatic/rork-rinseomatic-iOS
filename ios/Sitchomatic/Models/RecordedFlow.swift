@@ -1,5 +1,97 @@
 import Foundation
 
+nonisolated enum FlowPlaceholderToken: String, Codable, Sendable, CaseIterable {
+    case userEmail = "userEmail"
+    case userPassword = "userPassword"
+    case cardNumber = "cardNumber"
+    case expMonth = "expMonth"
+    case expYear = "expYear"
+    case cvv = "cvv"
+    case miscTextbox1 = "miscTextbox1"
+    case miscTextbox2 = "miscTextbox2"
+    case miscTextbox3 = "miscTextbox3"
+
+    var templateKey: String {
+        switch self {
+        case .userEmail: return "{{USER_EMAIL}}"
+        case .userPassword: return "{{USER_PASSWORD}}"
+        case .cardNumber: return "{{CARD_NUMBER}}"
+        case .expMonth: return "{{EXP_MONTH}}"
+        case .expYear: return "{{EXP_YEAR}}"
+        case .cvv: return "{{CVV}}"
+        case .miscTextbox1: return "{{MISC_TEXTBOX1}}"
+        case .miscTextbox2: return "{{MISC_TEXTBOX2}}"
+        case .miscTextbox3: return "{{MISC_TEXTBOX3}}"
+        }
+    }
+
+    var displayLabel: String {
+        switch self {
+        case .userEmail: return "Email"
+        case .userPassword: return "Password"
+        case .cardNumber: return "Card Number"
+        case .expMonth: return "Expiry Month"
+        case .expYear: return "Expiry Year"
+        case .cvv: return "CVV / CVC"
+        case .miscTextbox1: return "Field 1"
+        case .miscTextbox2: return "Field 2"
+        case .miscTextbox3: return "Field 3"
+        }
+    }
+
+    static func detect(
+        fromLabel label: String,
+        targetType: String?,
+        name: String? = nil,
+        id: String? = nil,
+        placeholder: String? = nil,
+        autocomplete: String? = nil,
+        labelText: String? = nil
+    ) -> FlowPlaceholderToken? {
+        let l = label.lowercased()
+        let t = targetType?.lowercased() ?? ""
+        
+        let semanticStrings = [
+            l,
+            t,
+            name?.lowercased() ?? "",
+            id?.lowercased() ?? "",
+            placeholder?.lowercased() ?? "",
+            autocomplete?.lowercased() ?? "",
+            labelText?.lowercased() ?? ""
+        ]
+        
+        func matches(_ keywords: [String]) -> Bool {
+            for s in semanticStrings {
+                for k in keywords {
+                    if s.contains(k) { return true }
+                }
+            }
+            return false
+        }
+
+        if matches(["email", "e-mail"]) {
+            return .userEmail
+        }
+        if matches(["password"]) {
+            return .userPassword
+        }
+        if matches(["card", "number", "pan"]) {
+            return .cardNumber
+        }
+        if matches(["month", "mm"]) {
+            return .expMonth
+        }
+        if matches(["year", "yy"]) {
+            return .expYear
+        }
+        if matches(["cvv", "cvc", "security"]) {
+            return .cvv
+        }
+        return nil
+    }
+}
+
 nonisolated struct RecordedFlow: Codable, Sendable, Identifiable {
     let id: String
     var name: String
@@ -16,19 +108,22 @@ nonisolated struct RecordedFlow: Codable, Sendable, Identifiable {
         let selector: String
         let originalText: String
         var placeholderKey: String
+        var assignedToken: FlowPlaceholderToken?
 
         init(
             id: String = UUID().uuidString,
             label: String,
             selector: String,
             originalText: String,
-            placeholderKey: String
+            placeholderKey: String,
+            assignedToken: FlowPlaceholderToken? = nil
         ) {
             self.id = id
             self.label = label
             self.selector = selector
             self.originalText = originalText
             self.placeholderKey = placeholderKey
+            self.assignedToken = assignedToken
         }
     }
 

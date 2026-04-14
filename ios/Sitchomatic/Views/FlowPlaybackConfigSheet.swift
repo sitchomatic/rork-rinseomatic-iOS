@@ -59,20 +59,34 @@ struct FlowPlaybackConfigSheet: View {
                         Section("Fill Text Fields") {
                             ForEach(flow.textboxMappings) { mapping in
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(mapping.label)
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                        .foregroundStyle(.blue)
+                                    HStack {
+                                        Text(mapping.assignedToken?.displayLabel ?? mapping.label)
+                                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                            .foregroundStyle(.blue)
+                                        if let token = mapping.assignedToken {
+                                            Text("(\(mapping.label))")
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                    
+                                    let key = mapping.assignedToken?.templateKey ?? mapping.placeholderKey
                                     TextField("Enter value for \(mapping.label)", text: Binding(
-                                        get: { vm.textboxValues[mapping.placeholderKey] ?? "" },
-                                        set: { vm.textboxValues[mapping.placeholderKey] = $0 }
+                                        get: { vm.textboxValues[key] ?? "" },
+                                        set: { vm.textboxValues[key] = $0 }
                                     ))
                                     .font(.system(size: 14))
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
+                                    
                                     if !mapping.originalText.isEmpty {
-                                        Text("Original: \(mapping.originalText)")
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(.tertiary)
+                                        HStack(spacing: 2) {
+                                            Text(mapping.assignedToken != nil ? "Token:" : "Original:")
+                                            Text(mapping.originalText)
+                                                .font(.system(size: 10, design: .monospaced))
+                                        }
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.tertiary)
                                     }
                                 }
                             }

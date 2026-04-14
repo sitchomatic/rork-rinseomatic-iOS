@@ -79,7 +79,7 @@ class FlowPlaybackEngine {
 
             if cancelled { break }
 
-            let success = await executeActionWithHealing(action, index: index, in: webView, textboxValues: textboxValues, sessionId: sessionId)
+            let success = await executeActionWithHealing(action, flow: flow, index: index, in: webView, textboxValues: textboxValues, sessionId: sessionId)
             if !success {
                 failedActionIndices.append(index)
             }
@@ -94,7 +94,7 @@ class FlowPlaybackEngine {
         onComplete(success)
     }
 
-    func testActionWithMethod(_ action: RecordedAction, method: ActionAutomationMethod, in webView: WKWebView, textboxValues: [String: String]) async -> Bool {
+    func testActionWithMethod(_ action: RecordedAction, flow: RecordedFlow? = nil, method: ActionAutomationMethod, in webView: WKWebView, textboxValues: [String: String]) async -> Bool {
         switch method {
         case .humanClick:
             return await executeHumanTouchChainClick(action, in: webView)
@@ -119,23 +119,49 @@ class FlowPlaybackEngine {
         case .tabNavigation:
             return await executeTabNavigation(action, in: webView)
         case .nativeSetterFill:
-            if let label = action.textboxLabel {
-                let value = textboxValues[label] ?? action.textContent ?? ""
-                return await executeNativeSetterFill(selector: action.targetSelector ?? "", value: value, in: webView)
-            }
-            return false
+            let value = flow != nil ? resolveTextValue(for: action, flow: flow!, textboxValues: textboxValues) : (action.textContent ?? "")
+            return await executeNativeSetterFill(selector: action.targetSelector ?? "", value: value, in: webView)
         case .execCommandInsert:
-            if let label = action.textboxLabel {
-                let value = textboxValues[label] ?? action.textContent ?? ""
-                return await executeExecCommandInsert(value: value, in: webView)
-            }
-            return false
+            let value = flow != nil ? resolveTextValue(for: action, flow: flow!, textboxValues: textboxValues) : (action.textContent ?? "")
+            return await executeExecCommandInsert(value: value, in: webView)
         case .mouseHoverThenClick:
             return await executeHoverThenClick(action, in: webView)
         }
     }
 
     // MARK: - Individual Method Implementations
+
+    private func resolveTextValue(for action: RecordedAction, flow: RecordedFlow, textboxValues: [String: String]) -> String {
+        // 1. Find mapping for this selector
+        if let mapping = flow.textboxMappings.first(where: { $0.selector == action.targetSelector }) {
+            // 2. If token, check templateKey first
+            if let token = mapping.assignedToken {
+                if let val = textboxValues[token.templateKey] { return val }
+                if let val = textboxValues[mapping.placeholderKey] { return val }
+            }
+            // 3. Fallback to placeholderKey (label)
+            if let val = textboxValues[mapping.placeholderKey] { return val }
+        }
+        
+        // 4. Fallback to direct label lookup
+        if let label = action.textboxLabel, let val = textboxValues[label] { return val }
+        
+        // 5. Token key fallback: if textContent contains a raw token key (e.g. from edited/imported flow)
+        if let text = action.textContent {
+            var resolvedText = text
+            var found = false
+            for token in FlowPlaceholderToken.allCases {
+                if resolvedText.contains(token.templateKey), let val = textboxValues[token.templateKey] {
+                    resolvedText = resolvedText.replacingOccurrences(of: token.templateKey, with: val)
+                    found = true
+                }
+            }
+            if found { return resolvedText }
+        }
+
+        // 6. Final fallback: original text
+        return action.textContent ?? ""
+    }
 
     private func executeHumanTouchChainClick(_ action: RecordedAction, in webView: WKWebView) async -> Bool {
         guard let pos = action.mousePosition else { return false }
@@ -557,8 +583,8 @@ class FlowPlaybackEngine {
 
     // MARK: - Execute with Healing
 
-    private func executeActionWithHealing(_ action: RecordedAction, index: Int, in webView: WKWebView, textboxValues: [String: String], sessionId: String) async -> Bool {
-        let result = await executeAction(action, in: webView, textboxValues: textboxValues, sessionId: sessionId)
+    private func executeActionWithHealing(_ action: RecordedAction, flow: RecordedFlow, index: Int, in webView: WKWebView, textboxValues: [String: String], sessionId: String) async -> Bool {
+        let result = await executeAction(action, flow: flow, in: webView, textboxValues: textboxValues, sessionId: sessionId)
         if result { return true }
 
         if action.type == .click || action.type == .mouseDown || action.type == .mouseUp {
@@ -572,8 +598,8 @@ class FlowPlaybackEngine {
         }
 
         if action.type == .input || action.type == .textboxEntry {
-            if let sel = action.targetSelector, let label = action.textboxLabel {
-                let value = textboxValues[label] ?? action.textContent ?? ""
+            if let sel = action.targetSelector {
+                let value = resolveTextValue(for: action, flow: flow, textboxValues: textboxValues)
                 let healResult = await healInputAction(selector: sel, value: value, in: webView)
                 if healResult {
                     healedActionCount += 1
@@ -592,7 +618,7 @@ class FlowPlaybackEngine {
             }
         }
 
-        let visionHealed = await healWithVision(action, index: index, in: webView, textboxValues: textboxValues, sessionId: sessionId)
+        let visionHealed = await healWithVision(action, flow: flow, index: index, in: webView, textboxValues: textboxValues, sessionId: sessionId)
         if visionHealed {
             healedActionCount += 1
             return true
@@ -601,7 +627,7 @@ class FlowPlaybackEngine {
         return false
     }
 
-    private func healWithVision(_ action: RecordedAction, index: Int, in webView: WKWebView, textboxValues: [String: String], sessionId: String) async -> Bool {
+    private func healWithVision(_ action: RecordedAction, flow: RecordedFlow, index: Int, in webView: WKWebView, textboxValues: [String: String], sessionId: String) async -> Bool {
         guard let screenshot = await captureWebViewScreenshot(webView) else { return false }
         let viewportSize = webView.frame.size.width > 0 ? webView.frame.size : CGSize(width: 390, height: 844)
 
@@ -624,42 +650,41 @@ class FlowPlaybackEngine {
         }
 
         if action.type == .input || action.type == .textboxEntry || action.type == .focus {
-            if let label = action.textboxLabel {
-                let detection = await visionML.detectLoginElements(in: screenshot, viewportSize: viewportSize)
-                let lowerLabel = label.lowercased()
+            let detection = await visionML.detectLoginElements(in: screenshot, viewportSize: viewportSize)
+            let label = action.textboxLabel ?? ""
+            let lowerLabel = label.lowercased()
 
-                var targetCoord: CGPoint?
-                if lowerLabel.contains("email") || lowerLabel.contains("user") {
-                    targetCoord = detection.emailField?.pixelCoordinate
-                } else if lowerLabel.contains("pass") {
-                    targetCoord = detection.passwordField?.pixelCoordinate
+            var targetCoord: CGPoint?
+            if lowerLabel.contains("email") || lowerLabel.contains("user") {
+                targetCoord = detection.emailField?.pixelCoordinate
+            } else if lowerLabel.contains("pass") {
+                targetCoord = detection.passwordField?.pixelCoordinate
+            }
+
+            if let coord = targetCoord {
+                let clickJS = buildVisionClickJS(x: coord.x, y: coord.y)
+                _ = await webView.safeEvalJS(clickJS)
+                try? await Task.sleep(for: .milliseconds(200))
+
+                if action.type == .input || action.type == .textboxEntry {
+                    let value = resolveTextValue(for: action, flow: flow, textboxValues: textboxValues)
+                    let escaped = value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'")
+                    let typeJS = """
+                    (function(){
+                        var el = document.activeElement;
+                        if (!el || el === document.body) return 'NO_ACTIVE';
+                        el.value = '';
+                        var ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+                        if (ns && ns.set) { ns.set.call(el, '\(escaped)'); } else { el.value = '\(escaped)'; }
+                        el.dispatchEvent(new Event('input', {bubbles:true}));
+                        el.dispatchEvent(new Event('change', {bubbles:true}));
+                        return el.value.length > 0 ? 'TYPED' : 'EMPTY';
+                    })()
+                    """
+                    let result = await webView.safeEvalJS(typeJS)
+                    return result == "TYPED"
                 }
-
-                if let coord = targetCoord {
-                    let clickJS = buildVisionClickJS(x: coord.x, y: coord.y)
-                    _ = await webView.safeEvalJS(clickJS)
-                    try? await Task.sleep(for: .milliseconds(200))
-
-                    if action.type == .input || action.type == .textboxEntry {
-                        let value = textboxValues[label] ?? action.textContent ?? ""
-                        let escaped = value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'")
-                        let typeJS = """
-                        (function(){
-                            var el = document.activeElement;
-                            if (!el || el === document.body) return 'NO_ACTIVE';
-                            el.value = '';
-                            var ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
-                            if (ns && ns.set) { ns.set.call(el, '\(escaped)'); } else { el.value = '\(escaped)'; }
-                            el.dispatchEvent(new Event('input', {bubbles:true}));
-                            el.dispatchEvent(new Event('change', {bubbles:true}));
-                            return el.value.length > 0 ? 'TYPED' : 'EMPTY';
-                        })()
-                        """
-                        let result = await webView.safeEvalJS(typeJS)
-                        return result == "TYPED"
-                    }
-                    return true
-                }
+                return true
             }
         }
 
@@ -780,7 +805,7 @@ class FlowPlaybackEngine {
         return result == "HEALED"
     }
 
-    private func executeAction(_ action: RecordedAction, in webView: WKWebView, textboxValues: [String: String], sessionId: String) async -> Bool {
+    private func executeAction(_ action: RecordedAction, flow: RecordedFlow, in webView: WKWebView, textboxValues: [String: String], sessionId: String) async -> Bool {
         switch action.type {
         case .mouseMove:
             guard let pos = action.mousePosition else { return true }
@@ -911,8 +936,9 @@ class FlowPlaybackEngine {
             default: return true
             }
 
-            if let label = action.textboxLabel, action.type == .keyDown {
-                if let _ = textboxValues[label] {
+            if let _ = action.textboxLabel, action.type == .keyDown {
+                let val = resolveTextValue(for: action, flow: flow, textboxValues: textboxValues)
+                if !val.isEmpty {
                     if let key = action.key, key.count == 1 {
                         return true
                     }
@@ -954,13 +980,8 @@ class FlowPlaybackEngine {
             return true
 
         case .input:
-            if let label = action.textboxLabel, let sel = action.targetSelector {
-                let value: String
-                if let replacement = textboxValues[label] {
-                    value = replacement
-                } else {
-                    value = action.textContent ?? ""
-                }
+            if let sel = action.targetSelector {
+                let value = resolveTextValue(for: action, flow: flow, textboxValues: textboxValues)
                 let escaped = value.replacingOccurrences(of: "'", with: "\\'").replacingOccurrences(of: "\\", with: "\\\\")
                 let selEscaped = sel.replacingOccurrences(of: "'", with: "\\'")
                 let js = """
@@ -1049,8 +1070,8 @@ class FlowPlaybackEngine {
             return true
 
         case .textboxEntry:
-            if let label = action.textboxLabel, let sel = action.targetSelector {
-                let value = textboxValues[label] ?? action.textContent ?? ""
+            if let sel = action.targetSelector {
+                let value = resolveTextValue(for: action, flow: flow, textboxValues: textboxValues)
                 let typeResult = await typeHumanLike(value, selector: sel, in: webView, sessionId: sessionId)
                 return typeResult
             }
@@ -1102,6 +1123,8 @@ class FlowPlaybackEngine {
             mousePosition: a.mousePosition, scrollDeltaX: a.scrollDeltaX, scrollDeltaY: a.scrollDeltaY,
             keyCode: a.keyCode, key: a.key, code: a.code, charCode: a.charCode,
             targetSelector: a.targetSelector, targetTagName: a.targetTagName, targetType: a.targetType,
+            targetName: a.targetName, targetId: a.targetId, targetPlaceholder: a.targetPlaceholder,
+            targetAutocomplete: a.targetAutocomplete, targetLabelText: a.targetLabelText,
             textboxLabel: a.textboxLabel, textContent: a.textContent,
             button: a.button, buttons: a.buttons, holdDurationMs: a.holdDurationMs,
             isTrusted: a.isTrusted, shiftKey: a.shiftKey, ctrlKey: a.ctrlKey, altKey: a.altKey, metaKey: a.metaKey

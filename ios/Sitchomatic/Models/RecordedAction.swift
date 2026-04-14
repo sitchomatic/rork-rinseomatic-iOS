@@ -44,8 +44,13 @@ nonisolated struct RecordedAction: Codable, Sendable, Identifiable {
     let targetSelector: String?
     let targetTagName: String?
     let targetType: String?
+    let targetName: String?
+    let targetId: String?
+    let targetPlaceholder: String?
+    let targetAutocomplete: String?
+    let targetLabelText: String?
     let textboxLabel: String?
-    let textContent: String?
+    var textContent: String?
     let button: Int?
     let buttons: Int?
     let holdDurationMs: Double?
@@ -70,6 +75,11 @@ nonisolated struct RecordedAction: Codable, Sendable, Identifiable {
         targetSelector: String? = nil,
         targetTagName: String? = nil,
         targetType: String? = nil,
+        targetName: String? = nil,
+        targetId: String? = nil,
+        targetPlaceholder: String? = nil,
+        targetAutocomplete: String? = nil,
+        targetLabelText: String? = nil,
         textboxLabel: String? = nil,
         textContent: String? = nil,
         button: Int? = nil,
@@ -95,6 +105,11 @@ nonisolated struct RecordedAction: Codable, Sendable, Identifiable {
         self.targetSelector = targetSelector
         self.targetTagName = targetTagName
         self.targetType = targetType
+        self.targetName = targetName
+        self.targetId = targetId
+        self.targetPlaceholder = targetPlaceholder
+        self.targetAutocomplete = targetAutocomplete
+        self.targetLabelText = targetLabelText
         self.textboxLabel = textboxLabel
         self.textContent = textContent
         self.button = button

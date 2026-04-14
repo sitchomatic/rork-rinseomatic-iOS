@@ -154,25 +154,60 @@ class FlowRecorderViewModel {
 
     func saveCurrentFlow() {
         let name = flowName.isEmpty ? "Flow \(savedFlows.count + 1)" : flowName
+        var miscIndex = 1
+        var finalActions = currentActions
+        
         let textboxMappings = detectedTextboxes.map { label in
             let lastInput = currentActions.last(where: { $0.textboxLabel == label && $0.type == .input })
             let selector = lastInput?.targetSelector ?? ""
-            let originalText = lastInput?.textContent ?? ""
+            let rawText = lastInput?.textContent ?? ""
+            let targetType = lastInput?.targetType
+            
+            var token = FlowPlaceholderToken.detect(
+                fromLabel: label,
+                targetType: targetType,
+                name: lastInput?.targetName,
+                id: lastInput?.targetId,
+                placeholder: lastInput?.targetPlaceholder,
+                autocomplete: lastInput?.targetAutocomplete,
+                labelText: lastInput?.targetLabelText
+            )
+            if token == nil {
+                if miscIndex == 1 { token = .miscTextbox1 }
+                else if miscIndex == 2 { token = .miscTextbox2 }
+                else if miscIndex == 3 { token = .miscTextbox3 }
+                miscIndex += 1
+            }
+            
+            let originalText = token?.templateKey ?? rawText
+            
+            // Rewrite actions for this selector/label to use the token
+            if let token = token {
+                for i in 0..<finalActions.count {
+                    if finalActions[i].targetSelector == selector || finalActions[i].textboxLabel == label {
+                        if finalActions[i].type == .input || finalActions[i].type == .textboxEntry {
+                            finalActions[i].textContent = token.templateKey
+                        }
+                    }
+                }
+            }
+            
             return RecordedFlow.TextboxMapping(
                 label: label,
                 selector: selector,
                 originalText: originalText,
-                placeholderKey: label
+                placeholderKey: label,
+                assignedToken: token
             )
         }
 
         let flow = RecordedFlow(
             name: name,
             url: targetURL,
-            actions: currentActions,
+            actions: finalActions,
             textboxMappings: textboxMappings,
             totalDurationMs: recordingDurationMs,
-            actionCount: currentActions.count
+            actionCount: finalActions.count
         )
         let review = FlowSaveReviewService.review(original: nil, updated: flow)
 
@@ -214,7 +249,8 @@ class FlowRecorderViewModel {
         playFromStepIndex = 0
         recordAfterPlayback = false
         for mapping in flow.textboxMappings {
-            textboxValues[mapping.placeholderKey] = ""
+            let key = mapping.assignedToken?.templateKey ?? mapping.placeholderKey
+            textboxValues[key] = ""
         }
         showPlaybackSheet = true
     }
@@ -225,7 +261,8 @@ class FlowRecorderViewModel {
         playFromStepIndex = max(0, min(fromStep, max(0, flow.actions.count - 1)))
         recordAfterPlayback = true
         for mapping in flow.textboxMappings {
-            textboxValues[mapping.placeholderKey] = ""
+            let key = mapping.assignedToken?.templateKey ?? mapping.placeholderKey
+            textboxValues[key] = ""
         }
         statusMessage = "Prepared continue-from-here playback at step \(playFromStepIndex)"
         showPlaybackSheet = true
@@ -321,7 +358,7 @@ class FlowRecorderViewModel {
 
         Task {
             let startTime = Date()
-            let success = await playbackEngine.testActionWithMethod(action, method: method, in: webView, textboxValues: textboxValues)
+            let success = await playbackEngine.testActionWithMethod(action, flow: selectedFlow, method: method, in: webView, textboxValues: textboxValues)
             let elapsed = Int(Date().timeIntervalSince(startTime) * 1000)
 
             let result = ActionTestResult(
@@ -347,7 +384,7 @@ class FlowRecorderViewModel {
         Task {
             for method in ActionAutomationMethod.allCases {
                 let startTime = Date()
-                let success = await playbackEngine.testActionWithMethod(action, method: method, in: webView, textboxValues: textboxValues)
+                let success = await playbackEngine.testActionWithMethod(action, flow: selectedFlow, method: method, in: webView, textboxValues: textboxValues)
                 let elapsed = Int(Date().timeIntervalSince(startTime) * 1000)
 
                 let result = ActionTestResult(
