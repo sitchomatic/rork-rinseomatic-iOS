@@ -100,12 +100,22 @@ struct UnifiedScreenshotFeedView: View {
     private var albums: [UnifiedScreenshotAlbum] {
         let validScreenshots = filteredScreenshots.filter { !$0.credentialEmail.isEmpty }
         let grouped = Dictionary(grouping: validScreenshots) { $0.credentialEmail }
-        return grouped.map { email, shots in
+        var result = grouped.map { email, shots in
             UnifiedScreenshotAlbum(
                 credentialEmail: email,
                 screenshots: shots.sorted { $0.timestamp > $1.timestamp }
             )
         }.sorted { $0.latestTimestamp > $1.latestTimestamp }
+        
+        // Include screenshots without a credential email in an "Uncategorized" album
+        let uncategorized = filteredScreenshots.filter { $0.credentialEmail.isEmpty }
+        if !uncategorized.isEmpty {
+            result.append(UnifiedScreenshotAlbum(
+                credentialEmail: "",
+                screenshots: uncategorized.sorted { $0.timestamp > $1.timestamp }
+            ))
+        }
+        return result
     }
 
     private func countFor(_ option: ScreenshotFilterOption) -> Int {
