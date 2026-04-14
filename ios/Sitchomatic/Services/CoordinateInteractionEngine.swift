@@ -113,6 +113,7 @@ class CoordinateInteractionEngine {
         executeJS: @escaping (String) async -> String?,
         jitterPx: Int = 3,
         hoverDwellMs: Int = 0,
+        semanticTargetDescription: String? = nil,
         sessionId: String = ""
     ) async -> ClickResult {
         if let rect = await locateElement(selectors: primarySelectors, executeJS: executeJS, timeoutMs: 1000) {
@@ -125,7 +126,33 @@ class CoordinateInteractionEngine {
             return await coordinateClick(rect: rect, executeJS: executeJS, jitterPx: jitterPx, hoverDwellMs: hoverDwellMs, sessionId: sessionId)
         }
 
-        logger.log("CoordEngine: element NOT_FOUND via any selector", category: .automation, level: .error, sessionId: sessionId)
+        // Feature 2: Dynamic Gemini Self-Healing
+        if let description = semanticTargetDescription {
+            logger.log("CoordEngine: Sel failed. Attempting Gemini Self-Healing for: \(description)", category: .automation, level: .warning, sessionId: sessionId)
+            if let domRaw = await executeJS("return document.body.innerHTML;") {
+                let domSample = String(domRaw.prefix(15000)) // Max 15k chars roughly logic context
+                let prompt = """
+                I am writing an automation script. My CSS selectors \(primarySelectors) failed to find the target.
+                Semantic target: "\(description)"
+                
+                Here is the DOM:
+                \(domSample)
+                
+                Return exactly one string: the most robust, specific CSS selector to click the target. Do not include quotes, explanations, or code blocks. Just the selector string.
+                """
+                
+                if let aSelector = await GeminiAIService.shared.generateContent(prompt: prompt, model: "gemini-1.5-flash-latest", jsonMode: false) {
+                    let cleanSelector = aSelector.trimmingCharacters(in: .whitespacesAndNewlines)
+                    logger.log("CoordEngine: Gemini synthesized selector: \(cleanSelector)", category: .automation, level: .success, sessionId: sessionId)
+                    
+                    if let healedRect = await locateElement(selectors: [cleanSelector], executeJS: executeJS, timeoutMs: 1000) {
+                        return await coordinateClick(rect: healedRect, executeJS: executeJS, jitterPx: jitterPx, hoverDwellMs: hoverDwellMs, sessionId: sessionId)
+                    }
+                }
+            }
+        }
+
+        logger.log("CoordEngine: element NOT_FOUND via any selector or healing", category: .automation, level: .error, sessionId: sessionId)
         return ClickResult(success: false, method: "NOT_FOUND", coordinates: nil)
     }
 

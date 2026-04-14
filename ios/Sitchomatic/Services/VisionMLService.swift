@@ -78,6 +78,62 @@ class VisionMLService {
         let processingTimeMs: Int
     }
 
+    // Feature 20: Zero-Copy CVPixelBuffer processing stream for Apple Neural Engine
+    func recognizePixelBuffer(buffer: CVPixelBuffer) async -> [OCRElement] {
+        let startTime = Date()
+
+        let request = VNRecognizeTextRequest()
+        request.revision = VNRecognizeTextRequestRevision3
+        request.usesCPUOnly = false
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = ["en-US"]
+        request.usesLanguageCorrection = true
+
+        // Bypass CGImage mapping allocation overlay!
+        let handler = VNImageRequestHandler(cvPixelBuffer: buffer, options: [:])
+
+        do {
+            try handler.perform([request])
+        } catch {
+            logger.logError("VisionML: OCR perform failed on CVPixelBuffer", error: error, category: .automation)
+            return []
+        }
+
+        guard let observations = request.results else { return [] }
+
+        let width = CVPixelBufferGetWidth(buffer)
+        let height = CVPixelBufferGetHeight(buffer)
+        let imageSize = CGSize(width: width, height: height)
+        var elements: [OCRElement] = []
+
+        for observation in observations {
+            guard let candidate = observation.topCandidates(1).first else { continue }
+            let box = observation.boundingBox
+            let pixelRect = CGRect(
+                x: box.origin.x * imageSize.width,
+                y: (1 - box.origin.y - box.height) * imageSize.height,
+                width: box.width * imageSize.width,
+                height: box.height * imageSize.height
+            )
+
+            let normalizedCenter = CGPoint(
+                x: box.origin.x + box.width / 2,
+                y: 1 - (box.origin.y + box.height / 2)
+            )
+
+            elements.append(OCRElement(
+                text: candidate.string,
+                boundingBox: pixelRect,
+                confidence: candidate.confidence,
+                normalizedCenter: normalizedCenter
+            ))
+        }
+
+        let elapsed = Int(Date().timeIntervalSince(startTime) * 1000)
+        logger.log("VisionML: Hardware OCR parsed \(elements.count) elements in \(elapsed)ms via CVPixelBuffer zero-copy", category: .automation, level: .success)
+        return elements
+    }
+
     func recognizeAllText(in image: UIImage, clippingTo viewportCrop: CGRect? = nil) async -> [OCRElement] {
         guard let originalCG = image.cgImage else { return [] }
         

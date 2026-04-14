@@ -193,6 +193,24 @@ class NetworkSessionFactory {
         sessionConfig.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         sessionConfig.httpShouldSetCookies = false
         sessionConfig.httpCookieAcceptPolicy = .never
+        
+        // Feature 10: Intelligent TLS/JA3 Evasion Profiling
+        // Randomizing TLS minimum bounds drastically alters the ClientHello JA3/JA4 fingerprint
+        if Bool.random() {
+            sessionConfig.tlsMinimumSupportedProtocolVersion = .TLSv13
+            sessionConfig.tlsMaximumSupportedProtocolVersion = .TLSv13
+        } else {
+            sessionConfig.tlsMinimumSupportedProtocolVersion = .TLSv12
+            sessionConfig.tlsMaximumSupportedProtocolVersion = .TLSv13
+        }
+        
+        // Dynamic HTTP2 header frame offsets
+        sessionConfig.httpAdditionalHeaders = [
+            "Accept-Language": ["en-AU,en;q=0.9", "en-US,en;q=0.8", "en-GB,en;q=0.9"].randomElement()!,
+            "DNT": ["1", "0"].randomElement()!,
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate"
+        ]
 
         let resolvedConfig = resolveEffectiveConfig(config)
         applySOCKS5ToURLSession(sessionConfig, config: resolvedConfig, target: target, credentialId: credentialId)

@@ -238,7 +238,62 @@ class PPSRStealthService {
         return profile
     }
 
+    func synthesizeProfile(for host: String) async -> SessionProfile? {
+        let prompt = """
+        Generate a statistically perfect iOS browser fingerprint for an average real user visiting '\(host)'.
+        Return ONLY valid JSON matching this schema:
+        {
+          "userAgent": "String (latest iOS Safari)",
+          "viewportWidth": 393,
+          "viewportHeight": 852,
+          "language": "en-AU",
+          "platform": "iPhone",
+          "cores": 6,
+          "memory": 8,
+          "tzOffset": -600,
+          "tzName": "Australia/Sydney",
+          "colorDepth": 32,
+          "pixelRatio": 3.0,
+          "maxTouchPoints": 5,
+          "connectionDownlink": 15.0,
+          "connectionRtt": 45
+        }
+        """
+        
+        guard let jsonString = await GeminiAIService.shared.generateContent(prompt: prompt, model: "gemini-1.5-flash-latest", jsonMode: true),
+              let data = jsonString.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        
+        return SessionProfile(
+            userAgent: dict["userAgent"] as? String ?? trustedProfiles[0].userAgent,
+            viewport: (dict["viewportWidth"] as? Int ?? 393, dict["viewportHeight"] as? Int ?? 852),
+            language: dict["language"] as? String ?? "en-AU",
+            platform: dict["platform"] as? String ?? "iPhone",
+            cores: dict["cores"] as? Int ?? 6,
+            memory: dict["memory"] as? Int ?? 8,
+            tzOffset: dict["tzOffset"] as? Int ?? -600,
+            tzName: dict["tzName"] as? String ?? "Australia/Sydney",
+            seed: UInt32.random(in: 1000000000...4000000000),
+            colorDepth: dict["colorDepth"] as? Int ?? 32,
+            pixelRatio: dict["pixelRatio"] as? Double ?? 3.0,
+            maxTouchPoints: dict["maxTouchPoints"] as? Int ?? 5,
+            isMobile: true,
+            webglVendor: "Apple Inc.",
+            webglRenderer: "Apple GPU",
+            connectionDownlink: dict["connectionDownlink"] as? Double ?? 15.0,
+            connectionRtt: dict["connectionRtt"] as? Int ?? 45
+        )
+    }
+
     func nextProfileForHost(_ host: String) async -> (profile: SessionProfile, index: Int) {
+        // Feature 6: Try Gemini AI Synthesis First!
+        if let aiSynthesized = await synthesizeProfile(for: host) {
+            DebugLogger.shared.log("PPSRStealth: Gemini synthesized zero-shot profile for \(host)", category: .automation, level: .success)
+            return (aiSynthesized, 9999) // Dynamic index
+        }
+        
         if let aiIndex = aiFingerprintTuning.recommendProfileIndex(for: host, totalProfiles: trustedProfiles.count) {
             return (trustedProfiles[aiIndex], aiIndex)
         }

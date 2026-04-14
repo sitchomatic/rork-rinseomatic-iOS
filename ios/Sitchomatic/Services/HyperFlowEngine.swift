@@ -44,12 +44,35 @@ public final class HyperFlowExecutor: @unchecked Sendable {
 
 // MARK: - 3. Active Window Anchoring (Jetsam Mitigation)
 
+// Feature 18: Predictive Memory Pre-fetching
+// Predicts scaling needs and allocates WKWebViews heavily in background idle sweeps
+public actor PredictiveWebViewPrefetcher {
+    private var isPrefetching = false
+    
+    func schedulePrefetch(currentCount: Int, targetCount: Int, factory: @Sendable @MainActor @escaping () -> Void) async {
+        guard !isPrefetching, currentCount < targetCount else { return }
+        isPrefetching = true
+        defer { isPrefetching = false }
+        
+        var instantiated = currentCount
+        while instantiated < targetCount {
+            // Idle pre-fetch sweep algorithm: allow Main thread 75ms space to render
+            try? await Task.sleep(nanoseconds: 75_000_000)
+            if !Task.isCancelled {
+                await factory()
+                instantiated += 1
+            }
+        }
+    }
+}
+
 @Observable
 @MainActor
 public final class WebViewPool {
     public static let shared = WebViewPool()
     public var activeViews: [UUID: WKWebView] = [:]
     private var phantomViews: [WKWebView] = []
+    private let prefetcher = PredictiveWebViewPrefetcher()
     
     private init() {
         Task { @MainActor in
@@ -82,12 +105,24 @@ public final class WebViewPool {
     }
     
     public func topUpPhantoms() {
-        while phantomViews.count < 3 {
-            let config = WKWebViewConfiguration()
-            config.processPool = WKProcessPoolFactory.shared.requestPool()
-            config.websiteDataStore = WKWebsiteDataStore.nonPersistent()
-            let phantom = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
-            phantomViews.append(phantom)
+        // Predictive actor scaling up to 4 phantom wrappers seamlessly!
+        let targetCount = 4 
+        let currentCount = phantomViews.count
+        
+        guard currentCount < targetCount else { return }
+        
+        Task {
+            await prefetcher.schedulePrefetch(currentCount: currentCount, targetCount: targetCount) { @MainActor [weak self] in
+                guard let self = self else { return }
+                guard self.phantomViews.count < targetCount else { return }
+                
+                let config = WKWebViewConfiguration()
+                config.processPool = WKProcessPoolFactory.shared.requestPool()
+                config.websiteDataStore = WKWebsiteDataStore.nonPersistent()
+                
+                let phantom = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
+                self.phantomViews.append(phantom)
+            }
         }
     }
 

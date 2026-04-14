@@ -158,8 +158,34 @@ final class CookieConsentManager {
                 hideBanners();
             }
 
+            // Feature 10: Consent-O-Matic cavi-au Heuristic Auto-Reject Port
+            // Actively seeks and clicks 'Reject All' / 'Deny' buttons before hiding them
+            function executeConsentOMaticReject() {
+                try {
+                    const rejectTerms = ['reject all', 'deny', 'decline', 'refuse', 'essential only', 'disallow', 'continue without accepting'];
+                    const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+                    for (let i = 0; i < buttons.length; i++) {
+                        let btn = buttons[i];
+                        if (btn.offsetWidth === 0 || btn.offsetHeight === 0) continue;
+                        let text = (btn.textContent || '').trim().toLowerCase();
+                        for (let term of rejectTerms) {
+                            if (text === term || (text.includes(term) && text.length < 30)) {
+                                btn.click();
+                                btn.dispatchEvent(new Event('click', { bubbles: true }));
+                                return true;
+                            }
+                        }
+                    }
+                } catch (e) {}
+                return false;
+            }
+
+            // Execute Consent-O-Matic clicker asynchronously to allow DOM parsing
+            setTimeout(() => { if (!executeConsentOMaticReject()) hideBanners(); }, 800);
+
             // Mutation observer for late-injected banners
             const observer = new MutationObserver((mutations) => {
+                executeConsentOMaticReject();
                 hideBanners();
             });
 
