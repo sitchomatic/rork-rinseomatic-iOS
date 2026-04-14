@@ -10,6 +10,7 @@ nonisolated struct EnrichedReplayStep: Identifiable, Sendable {
     let detail: String
     let level: String
     let screenshotId: String?
+    let htmlSnapshot: String?
     let pattern: String?
     let jsResult: String?
     let phase: String?
@@ -129,6 +130,7 @@ class ReplayDebuggerService {
                 detail: event.detail,
                 level: event.level,
                 screenshotId: event.screenshotId,
+                htmlSnapshot: event.htmlSnapshot,
                 pattern: pattern,
                 jsResult: jsResult,
                 phase: phase,

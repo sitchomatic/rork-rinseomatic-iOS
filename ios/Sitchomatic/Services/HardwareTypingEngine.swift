@@ -71,7 +71,14 @@ class HardwareTypingEngine {
                 return false
             }
 
-            let delay = GaussianRandom.delay(minMs: minKeystrokeMs, maxMs: maxKeystrokeMs)
+            // AI Evasion: Dynamic Input Typing Curve
+            // Humans typically type faster in the middle of words and slower at the start/end
+            let progress = Double(charIndex) / Double(chars.count)
+            let curveMultiplier = 0.8 + 0.4 * pow((progress - 0.5) * 2, 2)
+            
+            let baseDelay = Double(GaussianRandom.delay(minMs: minKeystrokeMs, maxMs: maxKeystrokeMs))
+            let delay = Int(baseDelay * curveMultiplier)
+
             if charIndex > 0 && charIndex % Int.random(in: 4...8) == 0 {
                 let thinkPause = GaussianRandom.delay(minMs: 200, maxMs: 500)
                 try? await Task.sleep(for: .milliseconds(delay + thinkPause))

@@ -7,6 +7,7 @@ nonisolated struct SessionReplayEvent: Codable, Sendable {
     let detail: String
     let level: String
     let screenshotId: String?
+    let htmlSnapshot: String?
 }
 
 nonisolated struct SessionReplayLog: Codable, Sendable {
@@ -44,16 +45,30 @@ class SessionReplayLogger {
         )
     }
 
-    func log(sessionId: String, action: String, detail: String, level: String = "info", screenshotId: String? = nil) {
+    func log(sessionId: String, action: String, detail: String, level: String = "info", screenshotId: String? = nil, htmlSnapshot: String? = nil) {
         guard var session = activeSessions[sessionId] else { return }
         let elapsed = Int(Date().timeIntervalSince(session.startTime) * 1000)
+        
+        var snapshotPath: String? = nil
+        if let html = htmlSnapshot, !html.isEmpty {
+            let filename = UUID().uuidString + ".html"
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dom_snapshots", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let fileURL = dir.appendingPathComponent(filename)
+            if let data = html.data(using: .utf8) {
+                try? data.write(to: fileURL)
+                snapshotPath = fileURL.path
+            }
+        }
+    
         session.events.append(SessionReplayEvent(
             timestamp: Date(),
             elapsedMs: elapsed,
             action: action,
             detail: detail,
             level: level,
-            screenshotId: screenshotId
+            screenshotId: screenshotId,
+            htmlSnapshot: snapshotPath
         ))
         activeSessions[sessionId] = session
     }

@@ -78,11 +78,37 @@ class VisionMLService {
         let processingTimeMs: Int
     }
 
-    func recognizeAllText(in image: UIImage) async -> [OCRElement] {
-        guard let cgImage = image.cgImage else { return [] }
+    func recognizeAllText(in image: UIImage, clippingTo viewportCrop: CGRect? = nil) async -> [OCRElement] {
+        guard let originalCG = image.cgImage else { return [] }
+        
+        let cgImage: CGImage
+        var xOffset: CGFloat = 0
+        var yOffset: CGFloat = 0
+        
+        if let crop = viewportCrop {
+            let scale = image.scale
+            let cropRect = CGRect(
+                x: crop.origin.x * scale,
+                y: crop.origin.y * scale,
+                width: crop.size.width * scale,
+                height: crop.size.height * scale
+            )
+            if let cropped = originalCG.cropping(to: cropRect) {
+                cgImage = cropped
+                xOffset = crop.origin.x * scale
+                yOffset = crop.origin.y * scale
+            } else {
+                cgImage = originalCG
+            }
+        } else {
+            cgImage = originalCG
+        }
+        
         let startTime = Date()
 
         let request = VNRecognizeTextRequest()
+        request.revision = VNRecognizeTextRequestRevision3 // Pin specifically to ANE
+        request.usesCPUOnly = false
         request.recognitionLevel = .accurate
         request.recognitionLanguages = ["en-US"]
         request.usesLanguageCorrection = true
@@ -106,15 +132,15 @@ class VisionMLService {
 
             let box = observation.boundingBox
             let pixelRect = CGRect(
-                x: box.origin.x * imageSize.width,
-                y: (1 - box.origin.y - box.height) * imageSize.height,
+                x: (box.origin.x * imageSize.width) + xOffset,
+                y: ((1 - box.origin.y - box.height) * imageSize.height) + yOffset,
                 width: box.width * imageSize.width,
                 height: box.height * imageSize.height
             )
 
             let normalizedCenter = CGPoint(
-                x: box.origin.x + box.width / 2,
-                y: 1 - (box.origin.y + box.height / 2)
+                x: (box.origin.x + box.width / 2) + (xOffset / (imageSize.width + xOffset)),
+                y: (1 - (box.origin.y + box.height / 2)) + (yOffset / (imageSize.height + yOffset))
             )
 
             elements.append(OCRElement(
@@ -133,7 +159,14 @@ class VisionMLService {
 
     func detectLoginElements(in image: UIImage, viewportSize: CGSize) async -> LoginFieldDetection {
         let startTime = Date()
-        let allText = await recognizeAllText(in: image)
+        
+        // Task 12: Viewport Clipping Pre-Calculations
+        // Optimization: Ignore top 15% (headers/nav) and bottom 15% (footers)
+        let cropHeight = image.size.height * 0.70
+        let cropY = image.size.height * 0.15
+        let cropOptions = CGRect(x: 0, y: cropY, width: image.size.width, height: cropHeight)
+        
+        let allText = await recognizeAllText(in: image, clippingTo: cropOptions)
 
         guard let cgImage = image.cgImage else {
             return LoginFieldDetection(emailField: nil, passwordField: nil, loginButton: nil, allText: allText, confidence: 0, method: "vision_ocr_failed")

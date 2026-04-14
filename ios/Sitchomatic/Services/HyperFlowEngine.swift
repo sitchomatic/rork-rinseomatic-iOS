@@ -49,8 +49,13 @@ public final class HyperFlowExecutor: @unchecked Sendable {
 public final class WebViewPool {
     public static let shared = WebViewPool()
     public var activeViews: [UUID: WKWebView] = [:]
-
-    private init() {}
+    private var phantomViews: [WKWebView] = []
+    
+    private init() {
+        Task { @MainActor in
+            self.topUpPhantoms()
+        }
+    }
 
     public var onMount: ((UUID, WKWebView) -> Void)?
     public var onUnmount: ((UUID) -> Void)?
@@ -64,12 +69,35 @@ public final class WebViewPool {
         activeViews.removeValue(forKey: id)
         onUnmount?(id)
     }
+    
+    /// Pre-warmed Phantom WebViews
+    public func dequeuePhantom() -> WKWebView? {
+        guard !phantomViews.isEmpty else {
+            topUpPhantoms()
+            return nil
+        }
+        let wv = phantomViews.removeFirst()
+        topUpPhantoms()
+        return wv
+    }
+    
+    public func topUpPhantoms() {
+        while phantomViews.count < 3 {
+            let config = WKWebViewConfiguration()
+            config.processPool = WKProcessPoolFactory.shared.requestPool()
+            config.websiteDataStore = WKWebsiteDataStore.nonPersistent()
+            let phantom = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
+            phantomViews.append(phantom)
+        }
+    }
 
     public var activeCount: Int { activeViews.count }
 
     public func reset() {
         let count = activeViews.count
         activeViews.removeAll()
+        phantomViews.removeAll()
+        topUpPhantoms()
         if count > 0 {
             DebugLogger.shared.log("WebViewPool: force-reset \(count) active views", category: .webView, level: .warning)
         }
@@ -81,7 +109,7 @@ public final class WebViewPool {
     }
 
     public var diagnosticSummary: String {
-        "Active: \(activeViews.count)"
+        "Active: \(activeViews.count) | Phantoms: \(phantomViews.count)"
     }
 }
 

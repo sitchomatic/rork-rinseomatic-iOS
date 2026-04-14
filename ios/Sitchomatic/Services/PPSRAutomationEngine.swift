@@ -92,6 +92,7 @@ class PPSRAutomationEngine: PPSRCheckAutomationEngine {
         }
 
         let session = LoginWebSession()
+        session.credentialId = check.email
         session.stealthEnabled = stealthEnabled
         session.speedMultiplier = speedMultiplier
         session.blockImages = speedMultiplier <= 0.5

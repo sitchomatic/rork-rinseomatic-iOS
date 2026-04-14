@@ -77,41 +77,42 @@ class LocalProxyServer {
     func start() {
         guard !isRunning else { return }
 
-        for port in portRetryRange {
-            do {
-                let params = NWParameters.tcp
-                params.allowLocalEndpointReuse = true
-                params.requiredInterfaceType = .loopback
+        do {
+            let tcpOptions = NWProtocolTCP.Options()
+            tcpOptions.noDelay = true
+            tcpOptions.keepaliveCount = 3
+            tcpOptions.keepaliveIdle = 2
+            tcpOptions.keepaliveInterval = 1
+            
+            let params = NWParameters(tls: nil, tcp: tcpOptions)
+            params.allowLocalEndpointReuse = true
+            params.requiredInterfaceType = .loopback
 
-                let nwListener = try NWListener(using: params, on: NWEndpoint.Port(integerLiteral: port))
-                self.listener = nwListener
+            // Use .any for Active Port Scrambling (Ephemeral Port Allocation)
+            let nwListener = try NWListener(using: params, on: .any)
+            self.listener = nwListener
 
-                nwListener.stateUpdateHandler = { [weak self] state in
-                    Task { @MainActor [weak self] in
-                        self?.handleListenerState(state)
-                    }
+            nwListener.stateUpdateHandler = { [weak self] state in
+                Task { @MainActor [weak self] in
+                    self?.handleListenerState(state)
                 }
-
-                nwListener.newConnectionHandler = { [weak self] nwConnection in
-                    Task { @MainActor [weak self] in
-                        self?.handleNewConnection(nwConnection)
-                    }
-                }
-
-                nwListener.start(queue: queue)
-                isRunning = true
-                stats.startedAt = Date()
-                statusMessage = "Starting on :\(port)..."
-                logger.log("LocalProxy: starting on port \(port)", category: .network, level: .info)
-                return
-            } catch {
-                logger.log("LocalProxy: port \(port) unavailable — \(error.localizedDescription)", category: .network, level: .warning)
-                continue
             }
-        }
 
-        statusMessage = "Failed: all ports unavailable"
-        logger.log("LocalProxy: failed to start — all ports in range unavailable", category: .network, level: .error)
+            nwListener.newConnectionHandler = { [weak self] nwConnection in
+                Task { @MainActor [weak self] in
+                    self?.handleNewConnection(nwConnection)
+                }
+            }
+
+            nwListener.start(queue: queue)
+            isRunning = true
+            stats.startedAt = Date()
+            statusMessage = "Starting on scrambled port..."
+            logger.log("LocalProxy: starting listener with active port scrambling", category: .network, level: .info)
+        } catch {
+            statusMessage = "Failed: \(error.localizedDescription)"
+            logger.log("LocalProxy: failed to bind to generic ephemeral port — \(error.localizedDescription)", category: .network, level: .error)
+        }
     }
 
     func stop() {

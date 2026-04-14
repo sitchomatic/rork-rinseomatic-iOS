@@ -186,7 +186,7 @@ class NetworkSessionFactory {
         proxyService.unifiedConnectionMode == .direct
     }
 
-    func buildURLSessionConfiguration(for config: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget) -> URLSessionConfiguration {
+    func buildURLSessionConfiguration(for config: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget, credentialId: String? = nil) -> URLSessionConfiguration {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = TimeoutResolver.resolveRequestTimeout(30)
         sessionConfig.timeoutIntervalForResource = TimeoutResolver.resolveResourceTimeout(60)
@@ -195,13 +195,13 @@ class NetworkSessionFactory {
         sessionConfig.httpCookieAcceptPolicy = .never
 
         let resolvedConfig = resolveEffectiveConfig(config)
-        applySOCKS5ToURLSession(sessionConfig, config: resolvedConfig, target: target)
+        applySOCKS5ToURLSession(sessionConfig, config: resolvedConfig, target: target, credentialId: credentialId)
 
         return sessionConfig
     }
 
     @discardableResult
-    func configureWKWebView(config wkConfig: WKWebViewConfiguration, networkConfig: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget = .joe, bypassTunnel: Bool = false) -> Bool {
+    func configureWKWebView(config wkConfig: WKWebViewConfiguration, networkConfig: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget = .joe, bypassTunnel: Bool = false, credentialId: String? = nil) -> Bool {
         // Inject baseline scripts including cookie consent suppression
         wkConfig.userContentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
         
@@ -217,10 +217,13 @@ class NetworkSessionFactory {
 
         case .wireGuardDNS(let wg):
             if !bypassTunnel, wireProxyBridge.isActive, localProxy.isRunning, localProxy.wireProxyMode {
-                let localConfig = localProxy.localProxyConfig
+                var localConfig = localProxy.localProxyConfig
+                if let credentialId {
+                    localConfig = ProxyConfig(id: localConfig.id, host: localConfig.host, port: localConfig.port, username: credentialId, password: "auth")
+                }
                 applySOCKS5ToDataStore(dataStore, proxy: localConfig)
                 wkConfig.websiteDataStore = dataStore
-                logger.log("WKWebView WG: \(wg.displayString) — routed via WireProxy local proxy 127.0.0.1:\(localConfig.port)", category: .vpn, level: .info)
+                logger.log("WKWebView WG: \(wg.displayString) — routed via WireProxy local proxy 127.0.0.1:\(localConfig.port) with credential pinned", category: .vpn, level: .info)
                 return true
             } else {
                 logger.log("WKWebView WG: \(wg.displayString) — \(bypassTunnel ? "tunnel bypassed for per-session IP" : "WireProxy not active"), applying SOCKS5 fallback for IP protection", category: .vpn, level: .warning)
@@ -298,7 +301,7 @@ class NetworkSessionFactory {
         }
     }
 
-    func buildProxiedDataStore(for networkConfig: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget) -> WKWebsiteDataStore {
+    func buildProxiedDataStore(for networkConfig: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget, credentialId: String? = nil) -> WKWebsiteDataStore {
         let dataStore = WKWebsiteDataStore.nonPersistent()
         let resolvedConfig = resolveEffectiveConfig(networkConfig)
 
@@ -309,9 +312,12 @@ class NetworkSessionFactory {
 
         case .wireGuardDNS:
             if wireProxyBridge.isActive, localProxy.isRunning, localProxy.wireProxyMode {
-                let localConfig = localProxy.localProxyConfig
+                var localConfig = localProxy.localProxyConfig
+                if let credentialId {
+                    localConfig = ProxyConfig(id: localConfig.id, host: localConfig.host, port: localConfig.port, username: credentialId, password: "auth")
+                }
                 applySOCKS5ToDataStore(dataStore, proxy: localConfig)
-                logger.log("DataStore WG: routed via WireProxy 127.0.0.1:\(localConfig.port)", category: .vpn, level: .debug)
+                logger.log("DataStore WG: routed via WireProxy 127.0.0.1:\(localConfig.port) with credential pinned", category: .vpn, level: .debug)
             } else if let fallbackProxy = proxyService.nextWorkingProxy(for: target) {
                 applySOCKS5ToDataStore(dataStore, proxy: fallbackProxy)
                 logger.log("DataStore WG: SOCKS5 fallback \(fallbackProxy.displayString) applied", category: .proxy, level: .info)
@@ -343,8 +349,8 @@ class NetworkSessionFactory {
         return dataStore
     }
 
-    func buildURLSessionProxyConfiguration(for config: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget) -> URLSessionConfiguration {
-        buildURLSessionConfiguration(for: config, target: target)
+    func buildURLSessionProxyConfiguration(for config: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget, credentialId: String? = nil) -> URLSessionConfiguration {
+        buildURLSessionConfiguration(for: config, target: target, credentialId: credentialId)
     }
 
     func preflightProxyCheck(for config: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget) async -> ActiveNetworkConfig {
@@ -428,7 +434,7 @@ class NetworkSessionFactory {
         dataStore.proxyConfigurations = [makeSOCKS5ProxyConfiguration(proxy: proxy)]
     }
 
-    private func applySOCKS5ToURLSession(_ sessionConfig: URLSessionConfiguration, config: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget) {
+    private func applySOCKS5ToURLSession(_ sessionConfig: URLSessionConfiguration, config: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget, credentialId: String? = nil) {
         switch config {
         case .direct:
             break
@@ -439,9 +445,12 @@ class NetworkSessionFactory {
 
         case .wireGuardDNS(let wg):
             if wireProxyBridge.isActive, localProxy.isRunning, localProxy.wireProxyMode {
-                let localConfig = localProxy.localProxyConfig
+                var localConfig = localProxy.localProxyConfig
+                if let credentialId {
+                    localConfig = ProxyConfig(id: localConfig.id, host: localConfig.host, port: localConfig.port, username: credentialId, password: "auth")
+                }
                 applySOCKS5Dict(to: sessionConfig, proxy: localConfig)
-                logger.log("URLSession WG: routed via WireProxy local proxy 127.0.0.1:\(localConfig.port)", category: .vpn, level: .info)
+                logger.log("URLSession WG: routed via WireProxy local proxy 127.0.0.1:\(localConfig.port) with credential pinned", category: .vpn, level: .info)
             } else {
                 logger.log("URLSession WG: \(wg.displayString) — WireProxy not active, applying SOCKS5 fallback", category: .vpn, level: .warning)
                 if let fallbackProxy = proxyService.nextWorkingProxy(for: target) {

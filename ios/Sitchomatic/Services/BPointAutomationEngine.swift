@@ -76,6 +76,7 @@ class BPointAutomationEngine: PPSRCheckAutomationEngine {
         }
 
         let session = BPointWebSession()
+        session.credentialId = check.email
         session.stealthEnabled = stealthEnabled
         session.speedMultiplier = speedMultiplier
         session.blockImages = speedMultiplier <= 0.5

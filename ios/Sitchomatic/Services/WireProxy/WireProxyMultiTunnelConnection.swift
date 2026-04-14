@@ -193,6 +193,12 @@ class WireProxyMultiTunnelConnection: WireProxyTunnelConnection {
         mtHadError = error || mtHadError
         mtClientConnection.cancel()
 
+        if mtHadError {
+            ProxyCircuitBreakerService.shared.recordFailure(slot: slot.index, reason: "connection_error")
+        } else {
+            ProxyCircuitBreakerService.shared.recordSuccess(slot: slot.index)
+        }
+
         let totalBytes = mtBytesUploaded + mtBytesDownloaded
         mtServer?.connectionFinished(
             id: mtId,

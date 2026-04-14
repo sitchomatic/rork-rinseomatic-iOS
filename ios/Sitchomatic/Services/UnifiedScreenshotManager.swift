@@ -47,16 +47,19 @@ class UnifiedScreenshotManager {
     ) async {
         analysisStats.totalCaptured += 1
 
-        let compressedData = compressToData(image)
-        let hashValue = foundationStore.hashString(for: compressedData)
-        if foundationStore.containsScreenshotHash(hashValue) || dedup.isDuplicate(image) {
+        let result = await ScreenshotCompressor.shared.compressAndHash(image)
+        let compressedData = result.data
+        let hashValue = result.hash
+        let resizedImage = result.resized
+        
+        if foundationStore.containsScreenshotHash(hashValue) || dedup.isDuplicate(resizedImage) {
             analysisStats.duplicatesSkipped += 1
             logger.log("UnifiedScreenshots: duplicate skipped for \(credentialEmail) step=\(step.rawValue)", category: .screenshot, level: .trace)
             foundationStore.refreshStorageHealth(currentSessionScreenshotCount: screenshots.count)
             return
         }
 
-        let compressedImage = UIImage(data: compressedData) ?? image
+        let compressedImage = resizedImage
 
         var analysis: VisionTextCropService.AnalysisResult?
         var croppedData: Data?
@@ -131,16 +134,19 @@ class UnifiedScreenshotManager {
     ) async {
         analysisStats.totalCaptured += 1
 
-        let compressedData = compressToData(image)
-        let hashValue = foundationStore.hashString(for: compressedData)
-        if foundationStore.containsScreenshotHash(hashValue) || dedup.isDuplicate(image) {
+        let result = await ScreenshotCompressor.shared.compressAndHash(image)
+        let compressedData = result.data
+        let hashValue = result.hash
+        let resizedImage = result.resized
+        
+        if foundationStore.containsScreenshotHash(hashValue) || dedup.isDuplicate(resizedImage) {
             analysisStats.duplicatesSkipped += 1
             logger.log("UnifiedScreenshots: duplicate skipped for \(credentialEmail) step=\(step.rawValue)", category: .screenshot, level: .trace)
             foundationStore.refreshStorageHealth(currentSessionScreenshotCount: screenshots.count)
             return
         }
 
-        let compressedImage = UIImage(data: compressedData) ?? image
+        let compressedImage = resizedImage
 
         var analysis: VisionTextCropService.AnalysisResult?
         var croppedData: Data?

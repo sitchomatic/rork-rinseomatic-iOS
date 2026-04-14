@@ -560,6 +560,16 @@ class WireProxyBridge {
     func nextTunnelSlot() -> WireProxyTunnelSlot? {
         let established = tunnelSlots.filter(\.isEstablished)
         guard !established.isEmpty else { return nil }
+
+        for i in 0..<established.count {
+            let wrappedIndex = (nextSlotIndex + i) % established.count
+            let candidateSlot = established[wrappedIndex]
+            if ProxyCircuitBreakerService.shared.isAllowed(slot: candidateSlot.index) {
+                nextSlotIndex = wrappedIndex + 1
+                return candidateSlot
+            }
+        }
+
         let slot = established[nextSlotIndex % established.count]
         nextSlotIndex += 1
         return slot
@@ -581,13 +591,36 @@ class WireProxyBridge {
         }
     }
 
+    func slotForCredential(_ credentialId: String?) -> WireProxyTunnelSlot? {
+        guard let credentialId = credentialId, !credentialId.isEmpty else { return nil }
+        let established = tunnelSlots.filter(\.isEstablished)
+        guard !established.isEmpty else { return nil }
+
+        let stableHash = abs(credentialId.hashValue)
+        let initialIndex = stableHash % established.count
+
+        for i in 0..<established.count {
+            let wrappedIndex = (initialIndex + i) % established.count
+            let candidateSlot = established[wrappedIndex]
+            if ProxyCircuitBreakerService.shared.isAllowed(slot: candidateSlot.index) {
+                if i > 0 {
+                    logger.log("WireProxyBridge: slot \(established[initialIndex].index) tripped breaker, sliding to slot \(candidateSlot.index)", category: .vpn, level: .warning)
+                }
+                return candidateSlot
+            }
+        }
+
+        return established[initialIndex]
+    }
+
     func handleSOCKS5Connection(
         id: UUID,
         clientConnection: NWConnection,
         targetHost: String,
         targetPort: UInt16,
         queue: DispatchQueue,
-        server: LocalProxyServer
+        server: LocalProxyServer,
+        credentialId: String? = nil
     ) {
         guard status == .established else {
             logger.log("WireProxyBridge: rejecting connection - tunnel not established", category: .vpn, level: .warning)
@@ -596,7 +629,7 @@ class WireProxyBridge {
 
         stats.connectionsServed += 1
 
-        if multiTunnelMode, let slot = nextTunnelSlot() {
+        if multiTunnelMode, let slot = slotForCredential(credentialId) ?? nextTunnelSlot() {
             let tunnelConn = WireProxyMultiTunnelConnection(
                 id: id,
                 clientConnection: clientConnection,
@@ -609,7 +642,8 @@ class WireProxyBridge {
             )
             tunnelConnections[id] = tunnelConn
             tunnelConn.start()
-            logger.log("WireProxyBridge: routed \(targetHost) → slot \(slot.index) (\(slot.serverName))", category: .vpn, level: .debug)
+            let routingLabel = credentialId != nil ? "pinned" : "round-robin"
+            logger.log("WireProxyBridge: routed \(targetHost) → slot \(slot.index) (\(slot.serverName)) via \(routingLabel)", category: .vpn, level: .debug)
             return
         }
 

@@ -47,11 +47,13 @@ class DualSiteWorkerService {
 
         let joeSession = LoginSiteWebSession(
             targetURL: URL(string: resolveURL(for: .joefortune).absoluteString)!,
-            networkConfig: netConfig
+            networkConfig: netConfig,
+            credentialId: session.credential.email
         )
         let ignSession = LoginSiteWebSession(
             targetURL: URL(string: resolveURL(for: .ignition).absoluteString)!,
-            networkConfig: netConfig
+            networkConfig: netConfig,
+            credentialId: session.credential.email
         )
 
         joeSession.stealthEnabled = stealthEnabled

@@ -80,6 +80,7 @@ class LoginSiteWebSession: NSObject {
     // MARK: Public Properties
 
     private(set) var webView: WKWebView?
+    var credentialId: String?
     var stealthEnabled: Bool = false
     var lastNavigationError: String?
     var lastHTTPStatusCode: Int?
@@ -117,10 +118,12 @@ class LoginSiteWebSession: NSObject {
 
     init(targetURL: URL,
          networkConfig: ActiveNetworkConfig = .direct,
-         proxyTarget: ProxyRotationService.ProxyTarget? = nil) {
+         proxyTarget: ProxyRotationService.ProxyTarget? = nil,
+         credentialId: String? = nil) {
         self.targetURL = targetURL
         self.networkConfig = networkConfig
         self.proxyTarget = proxyTarget ?? Self.inferProxyTarget(for: targetURL)
+        self.credentialId = credentialId
         super.init()
     }
 
@@ -147,6 +150,7 @@ class LoginSiteWebSession: NSObject {
         processTerminated = false
 
         let config = WKWebViewConfiguration()
+        config.processPool = WKProcessPoolFactory.shared.requestPool()
         config.websiteDataStore = isolatedDataStore
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -162,7 +166,7 @@ class LoginSiteWebSession: NSObject {
         config.userContentController = contentController
 
         let proxyApplied = NetworkSessionFactory.shared.configureWKWebView(
-            config: config, networkConfig: networkConfig, target: proxyTarget
+            config: config, networkConfig: networkConfig, target: proxyTarget, credentialId: credentialId
         )
         isProtectedRouteBlocked = networkConfig.requiresProtectedRoute && !proxyApplied
         if isProtectedRouteBlocked {
@@ -213,6 +217,7 @@ class LoginSiteWebSession: NSObject {
         loadTimeoutTask = nil
 
         if let wv = webView {
+            wv.evaluateJavaScript("try { if (window.gc) { window.gc(); } } catch(e) {}") { _, _ in }
             wv.stopLoading()
             if wipeAll {
                 wv.configuration.websiteDataStore.removeData(
@@ -1475,6 +1480,7 @@ class LoginWebSession: NSObject, ScreenshotCapableSession {
     // MARK: Public Properties
 
     private(set) var webView: WKWebView?
+    var credentialId: String?
     var stealthEnabled: Bool = false
     var speedMultiplier: Double = 1.0
     var blockImages: Bool = false
@@ -1523,6 +1529,7 @@ class LoginWebSession: NSObject, ScreenshotCapableSession {
         }
 
         let config = WKWebViewConfiguration()
+        config.processPool = WKProcessPoolFactory.shared.requestPool()
         config.websiteDataStore = isolatedDataStore
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -1542,7 +1549,7 @@ class LoginWebSession: NSObject, ScreenshotCapableSession {
         installBlockContentRules(on: contentController)
 
         let proxyApplied = NetworkSessionFactory.shared.configureWKWebView(
-            config: config, networkConfig: networkConfig, target: .ppsr
+            config: config, networkConfig: networkConfig, target: .ppsr, credentialId: credentialId
         )
         isProtectedRouteBlocked = networkConfig.requiresProtectedRoute && !proxyApplied
         if isProtectedRouteBlocked {
@@ -1585,6 +1592,7 @@ class LoginWebSession: NSObject, ScreenshotCapableSession {
         loadTimeoutTask?.cancel()
         loadTimeoutTask = nil
         if let wv = webView {
+            wv.evaluateJavaScript("try { if (window.gc) { window.gc(); } } catch(e) {}") { _, _ in }
             wv.stopLoading()
             wv.configuration.websiteDataStore.removeData(
                 ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
@@ -2220,6 +2228,7 @@ class BPointWebSession: NSObject, ScreenshotCapableSession {
     // MARK: Public Properties
 
     private(set) var webView: WKWebView?
+    var credentialId: String?
     var stealthEnabled: Bool = false
     var speedMultiplier: Double = 1.0
     var blockImages: Bool = false
@@ -2266,6 +2275,7 @@ class BPointWebSession: NSObject, ScreenshotCapableSession {
         if webView != nil { tearDown() }
 
         let config = WKWebViewConfiguration()
+        config.processPool = WKProcessPoolFactory.shared.requestPool()
         config.websiteDataStore = isolatedDataStore
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -2291,7 +2301,7 @@ class BPointWebSession: NSObject, ScreenshotCapableSession {
         installBlockContentRules(on: contentController)
 
         let proxyApplied = NetworkSessionFactory.shared.configureWKWebView(
-            config: config, networkConfig: networkConfig, target: .ppsr
+            config: config, networkConfig: networkConfig, target: .ppsr, credentialId: credentialId
         )
         isProtectedRouteBlocked = networkConfig.requiresProtectedRoute && !proxyApplied
         if isProtectedRouteBlocked {
@@ -2331,6 +2341,7 @@ class BPointWebSession: NSObject, ScreenshotCapableSession {
         loadTimeoutTask?.cancel()
         loadTimeoutTask = nil
         if let wv = webView {
+            wv.evaluateJavaScript("try { if (window.gc) { window.gc(); } } catch(e) {}") { _, _ in }
             wv.stopLoading()
             wv.configuration.websiteDataStore.removeData(
                 ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),

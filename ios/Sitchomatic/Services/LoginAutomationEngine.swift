@@ -110,7 +110,7 @@ class LoginAutomationEngine {
         logger.log("Network config: \(netConfig.label) for target \(proxyTarget.rawValue)\(networkConfigOverride != nil ? " (override)" : "")", category: .network, level: .info, sessionId: sessionId)
         attempt.logs.append(PPSRLogEntry(message: "Network: \(netConfig.label)\(networkConfigOverride != nil ? " (override)" : "")", level: .info))
 
-        let session = LoginSiteWebSession(targetURL: targetURL, networkConfig: netConfig)
+        let session = LoginSiteWebSession(targetURL: targetURL, networkConfig: netConfig, credentialId: attempt.credential.username)
         session.monitoringSessionId = sessionId
         session.stealthEnabled = stealthEnabled
         session.fingerprintValidationEnabled = automationSettings.fingerprintValidationEnabled

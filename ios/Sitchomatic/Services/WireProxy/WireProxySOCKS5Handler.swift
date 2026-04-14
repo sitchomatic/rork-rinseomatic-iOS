@@ -12,6 +12,7 @@ class WireProxySOCKS5Handler {
     private var isCancelled: Bool = false
     private var targetHost: String = ""
     private var targetPort: UInt16 = 0
+    private var parsedUsername: String?
     private var timeoutWork: DispatchWorkItem?
     private let timeoutSeconds: TimeInterval = 30
 
@@ -62,7 +63,59 @@ class WireProxySOCKS5Handler {
                     return
                 }
 
-                let response = Data([0x05, 0x00])
+                let nmethods = Int(data[1])
+                guard data.count >= 2 + nmethods else {
+                    self.finish(error: true)
+                    return
+                }
+
+                let methods = data[2..<(2 + nmethods)]
+                let supportsAuth = methods.contains(0x02)
+
+                let selectedMethod: UInt8 = supportsAuth ? 0x02 : 0x00
+                let response = Data([0x05, selectedMethod])
+
+                self.clientConnection.send(content: response, completion: .contentProcessed { [weak self] sendError in
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.isCancelled else { return }
+                        if sendError != nil { self.finish(error: true); return }
+                        
+                        if selectedMethod == 0x02 {
+                            self.readSOCKS5Auth()
+                        } else {
+                            self.readSOCKS5Request()
+                        }
+                    }
+                })
+            }
+        }
+    }
+
+    private func readSOCKS5Auth() {
+        clientConnection.receive(minimumIncompleteLength: 2, maximumLength: 512) { [weak self] data, _, _, error in
+            Task { @MainActor [weak self] in
+                guard let self, !self.isCancelled else { return }
+                if error != nil { self.finish(error: true); return }
+                guard let data, data.count >= 2, data[0] == 0x01 else {
+                    // Auth version must be 1
+                    self.finish(error: true)
+                    return
+                }
+                
+                let ulen = Int(data[1])
+                guard data.count >= 2 + ulen else {
+                    self.finish(error: true)
+                    return
+                }
+                
+                if ulen > 0 {
+                    let userBytes = data[2..<(2 + ulen)]
+                    self.parsedUsername = String(data: userBytes, encoding: .utf8)
+                }
+                
+                // We don't strictly care about the password or validating it here, 
+                // we just needed the username injection. Reply Auth Success.
+                let response = Data([0x01, 0x00])
                 self.clientConnection.send(content: response, completion: .contentProcessed { [weak self] sendError in
                     Task { @MainActor [weak self] in
                         guard let self, !self.isCancelled else { return }
@@ -147,7 +200,8 @@ class WireProxySOCKS5Handler {
             targetHost: targetHost,
             targetPort: targetPort,
             queue: queue,
-            server: server
+            server: server,
+            credentialId: parsedUsername
         )
     }
 

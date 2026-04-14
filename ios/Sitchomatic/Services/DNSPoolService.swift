@@ -131,8 +131,30 @@ class DNSPoolService {
     private let persistKey = "dns_pool_managed_v3"
     private let logger = DebugLogger.shared
     private let autoDisableThreshold: Int = 3
-    private var resolveCache: [String: (answer: DNSAnswer, expiry: Date)] = [:]
-    private let cacheTTL: TimeInterval = 120
+    private class CacheEntry: NSObject, NSDiscardableContent {
+        let answer: DNSAnswer
+        let expiry: Date
+        
+        init(answer: DNSAnswer, expiry: Date) {
+            self.answer = answer
+            self.expiry = expiry
+        }
+        
+        // NSDiscardableContent Protocol Methods
+        func beginContentAccess() -> Bool { return true }
+        func endContentAccess() {}
+        func discardContentIfPossible() {}
+        func isContentDiscarded() -> Bool { return false }
+    }
+
+    private let resolveCache: NSCache<NSString, CacheEntry> = {
+        let cache = NSCache<NSString, CacheEntry>()
+        cache.countLimit = 5000
+        cache.evictsObjectsWithDiscardedContent = true
+        return cache
+    }()
+    
+    private let cacheTTL: TimeInterval = 300 // Increased aggressive caching
 
     var regionPreference: DNSRegionPreference = .all {
         didSet { UserDefaults.standard.set(regionPreference.rawValue, forKey: "dns_pool_region_pref") }
@@ -191,6 +213,7 @@ class DNSPoolService {
     }
 
     init() {
+        resolveCache.countLimit = 1000
         loadManagedServers()
         regionPreference = DNSRegionPreference(rawValue: UserDefaults.standard.string(forKey: "dns_pool_region_pref") ?? "All") ?? .all
         autoDisableEnabled = UserDefaults.standard.object(forKey: "dns_pool_auto_disable") as? Bool ?? true
@@ -199,8 +222,12 @@ class DNSPoolService {
     // MARK: - Resolution (unified DoH + DoT)
 
     func resolveWithRotation(hostname: String) async -> DNSAnswer? {
-        if let cached = resolveCache[hostname], cached.expiry > Date() {
-            return cached.answer
+        if let cached = resolveCache.object(forKey: hostname as NSString) {
+            if cached.expiry > Date() {
+                return cached.answer
+            } else {
+                resolveCache.removeObject(forKey: hostname as NSString)
+            }
         }
 
         var servers = activeServers
@@ -232,7 +259,8 @@ class DNSPoolService {
 
             if let answer {
                 recordSuccess(serverId: server.id, latencyMs: answer.latencyMs)
-                resolveCache[hostname] = (answer: answer, expiry: Date().addingTimeInterval(cacheTTL))
+                let entry = CacheEntry(answer: answer, expiry: Date().addingTimeInterval(cacheTTL))
+                resolveCache.setObject(entry, forKey: hostname as NSString)
                 if attempt > 0 {
                     logger.logHealing(category: .dns, originalError: "Previous DNS servers failed", healingAction: "Resolved via \(server.displayLabel) on attempt #\(attempt + 1)", succeeded: true, attemptNumber: attempt + 1)
                 }
@@ -263,7 +291,8 @@ class DNSPoolService {
             }
             if let answer {
                 recordSuccess(serverId: server.id, latencyMs: answer.latencyMs)
-                resolveCache[hostname] = (answer: answer, expiry: Date().addingTimeInterval(cacheTTL))
+                let entry = CacheEntry(answer: answer, expiry: Date().addingTimeInterval(cacheTTL))
+                resolveCache.setObject(entry, forKey: hostname as NSString)
                 logger.log("DNSPool: full-fallback resolved \(hostname) via \(server.displayLabel)", category: .dns, level: .success)
                 return answer
             }
@@ -315,11 +344,11 @@ class DNSPoolService {
     }
 
     func invalidateCache() {
-        resolveCache.removeAll()
+        resolveCache.removeAllObjects()
     }
 
     func invalidateCache(for hostname: String) {
-        resolveCache.removeValue(forKey: hostname)
+        resolveCache.removeObject(forKey: hostname as NSString)
     }
 
     // MARK: - DoH Resolution
@@ -663,7 +692,7 @@ class DNSPoolService {
         managedServers = Self.defaultServers.map {
             ManagedDNSServer(name: $0.name, protocolType: $0.protocolType, endpoint: $0.endpoint, port: $0.port, region: $0.region, isEnabled: true, isDefault: $0.isDefault)
         }
-        resolveCache.removeAll()
+        resolveCache.removeAllObjects()
         persistManagedServers()
     }
 
