@@ -611,11 +611,11 @@ struct JSInteractionBuilder {
                 var my = startY + (endY - startY) * bezT + (Math.random() * 1.5 - 0.75);
                 try { btn.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:mx,clientY:my})); } catch(e){}
             }
-            btn.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,clientX:endX,clientY:endY,pointerId:1,pointerType:'mouse'}));
+            btn.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,clientX:endX,clientY:endY,pointerId:1,pointerType:'mouse',pressure:0.5,tiltX:Math.random()*10,tiltY:Math.random()*10,twist:Math.random()*20}));
             btn.dispatchEvent(new MouseEvent('mouseover',{bubbles:true,clientX:endX,clientY:endY}));
-            btn.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,clientX:endX,clientY:endY,pointerId:1,pointerType:'mouse',button:0,buttons:1}));
+            btn.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,clientX:endX,clientY:endY,pointerId:1,pointerType:'mouse',button:0,buttons:1,pressure:0.8,tiltX:Math.random()*15,tiltY:Math.random()*15,twist:Math.random()*20}));
             btn.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,clientX:endX,clientY:endY,button:0,buttons:1}));
-            btn.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,cancelable:true,clientX:endX,clientY:endY,pointerId:1,pointerType:'mouse',button:0}));
+            btn.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,cancelable:true,clientX:endX,clientY:endY,pointerId:1,pointerType:'mouse',button:0,pressure:0.0,tiltX:Math.random()*10,tiltY:Math.random()*10}));
             btn.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true,clientX:endX,clientY:endY,button:0}));
             btn.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,clientX:endX,clientY:endY,button:0}));
             try { btn.click(); } catch(e){}

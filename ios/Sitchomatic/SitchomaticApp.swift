@@ -172,6 +172,10 @@ struct SitchomaticApp: App {
         }
 
         _ = GrokAISetup.bootstrapFromEnvironment()
+        
+        // Securely bootstrap the provided Gemini API Key directly into the device Keychain.
+        GeminiAISetup.configure(apiKey: "AIzaSyCH8ZTvdMvBtR4Abs8c42vVyGH3U-moztA")
+        _ = GeminiAISetup.bootstrapFromEnvironment()
 
         let nord = NordVPNService.shared
         let hasRestoredProfile = await nord.ensureProfileNetworkPoolsReady()
@@ -328,8 +332,6 @@ struct SitchomaticApp: App {
         case .credentialHub:
             CredentialHubView()
         case .settings:
-            SettingsHubRootView()
-        case .settingsAndTesting:
             SettingsHubRootView()
         case .toolsAndTesting:
             ToolsAndTestingHubView()

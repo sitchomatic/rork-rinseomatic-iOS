@@ -28,26 +28,8 @@ class AntiBotDetectionService {
         logger.log("AntiBot: finding element '\(label)' using non-selector methods", category: .automation, level: .info, sessionId: sessionId)
 
         let screenshot = await captureScreenshot(webView)
+        // Note: Vision OCR checks removed per optimization strategy.
 
-        if let screenshot {
-            let viewportSize = webView.frame.size.width > 0 ? webView.frame.size : CGSize(width: 390, height: 844)
-            let hit = await visionML.findTextOnScreen(label, in: screenshot, viewportSize: viewportSize)
-            if let hit {
-                logger.log("AntiBot: Vision ML found '\(label)' at (\(Int(hit.pixelCoordinate.x)),\(Int(hit.pixelCoordinate.y)))", category: .automation, level: .info, sessionId: sessionId)
-                let clicked = await dispatchTouchChain(x: hit.pixelCoordinate.x, y: hit.pixelCoordinate.y, in: webView, settings: settings, sessionId: sessionId)
-                if clicked { return true }
-            }
-        }
-
-        if let screenshot {
-            let viewportSize = webView.frame.size.width > 0 ? webView.frame.size : CGSize(width: 390, height: 844)
-            let detection = await visionML.detectLoginElements(in: screenshot, viewportSize: viewportSize)
-            if let btnHit = detection.loginButton {
-                logger.log("AntiBot: Vision ML detected login button '\(btnHit.label)' at (\(Int(btnHit.pixelCoordinate.x)),\(Int(btnHit.pixelCoordinate.y)))", category: .automation, level: .info, sessionId: sessionId)
-                let clicked = await dispatchTouchChain(x: btnHit.pixelCoordinate.x, y: btnHit.pixelCoordinate.y, in: webView, settings: settings, sessionId: sessionId)
-                if clicked { return true }
-            }
-        }
 
         let textSearchResult = await findElementByVisibleText(label, in: webView)
         if let coord = textSearchResult {
@@ -69,27 +51,8 @@ class AntiBotDetectionService {
         logger.log("AntiBot: filling \(fieldType.rawValue) field using anti-detection methods", category: .automation, level: .info, sessionId: sessionId)
 
         let screenshot = await captureScreenshot(webView)
-        if let screenshot {
-            let viewportSize = webView.frame.size.width > 0 ? webView.frame.size : CGSize(width: 390, height: 844)
-            let detection = await visionML.detectLoginElements(in: screenshot, viewportSize: viewportSize)
+        // Note: Vision OCR field detection removed per optimization strategy.
 
-            var targetCoord: CGPoint?
-            switch fieldType {
-            case .email:
-                targetCoord = detection.emailField?.pixelCoordinate
-            case .password:
-                targetCoord = detection.passwordField?.pixelCoordinate
-            }
-
-            if let coord = targetCoord {
-                logger.log("AntiBot: Vision ML found \(fieldType.rawValue) at (\(Int(coord.x)),\(Int(coord.y)))", category: .automation, level: .info, sessionId: sessionId)
-                let tapped = await dispatchTouchChain(x: coord.x, y: coord.y, in: webView, settings: settings, sessionId: sessionId)
-                if tapped {
-                    try? await Task.sleep(for: .milliseconds(settings.fieldFocusDelayMs))
-                    return await fillActiveElement(value: value, in: webView, settings: settings, sessionId: sessionId)
-                }
-            }
-        }
 
         let fieldCoord = await probeFieldByPosition(fieldType: fieldType, in: webView)
         if let coord = fieldCoord {

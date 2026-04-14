@@ -53,8 +53,31 @@ final class GeminiAIService {
         return await callWithRetry(endpoint: "\(model):generateContent", body: body, key: key)
     }
 
+    // MARK: - Generic JSON Extraction Bridge
+    
+    func extractJSON<T: Decodable>(prompt: String, images: [UIImage] = [], model: String = "gemini-1.5-flash-latest", type: T.Type) async -> T? {
+        guard let responseStr = await generateContent(prompt: prompt, images: images, model: model, jsonMode: true),
+              let data = responseStr.data(using: .utf8) else {
+            return nil
+        }
+        
+        do {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let result = try decoder.decode(T.self, from: data)
+            return result
+        } catch {
+            logger.log("GeminiAI: JSON extraction failed to decode to \(T.self) — \(error.localizedDescription) \nRaw Response: \(responseStr)", category: .automation, level: .error)
+            return nil
+        }
+    }
+
     // MARK: - Validation API (Task 3)
     
+    private struct TransitionResult: Decodable {
+        let transitioned: Bool
+    }
+
     func validateNavigationViaFlash(beforeImage: UIImage, afterImage: UIImage) async -> Bool {
         let prompt = """
         I am attempting to click a button to navigate forward or close a modal.
@@ -63,11 +86,8 @@ final class GeminiAIService {
         Respond in JSON with a single key `transitioned: true/false`.
         """
         
-        guard let response = await generateContent(prompt: prompt, images: [beforeImage, afterImage], model: "gemini-1.5-flash-latest", jsonMode: true) else {
-            return false
-        }
-        
-        return response.lowercased().contains("\"transitioned\": true")
+        let result = await extractJSON(prompt: prompt, images: [beforeImage, afterImage], type: TransitionResult.self)
+        return result?.transitioned ?? false
     }
 
     // MARK: - Network Request

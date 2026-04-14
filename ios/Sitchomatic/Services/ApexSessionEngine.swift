@@ -1053,7 +1053,12 @@ class LoginSiteWebSession: NSObject {
     }
 
     func rapidResponsePoll(timeout: TimeInterval, originalURL: String) async -> (successTextFound: Bool, redirectedToHomepage: Bool, navigationDetected: Bool, errorBannerDetected: Bool, smsNotificationDetected: Bool, finalPageContent: String, finalURL: String) {
-        let start = Date()
+        // Wait extremely smartly for settlement (NetworkIdle, DOM Mutation Idle, JS Load)
+        _ = await SmartPageSettlementService.shared.waitForGenericSettlement(
+            executeJS: { [weak self] js in await self?.executeJS(js) },
+            maxTimeoutMs: Int(timeout * 1000)
+        )
+
         var successTextFound = false
         var redirectedToHomepage = false
         var navigationDetected = false
@@ -1079,13 +1084,10 @@ class LoginSiteWebSession: NSObject {
         })();
         """
 
-        while Date().timeIntervalSince(start) < timeout {
-            guard let raw = await executeJS(pollJS),
-                  let data = raw.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                try? await Task.sleep(for: .milliseconds(250))
-                continue
-            }
+        if let raw = await executeJS(pollJS),
+           let data = raw.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            
             let currentURL = json["url"] as? String ?? ""
             finalURL = currentURL
             finalPageContent = json["content"] as? String ?? ""
@@ -1093,6 +1095,7 @@ class LoginSiteWebSession: NSObject {
             errorBannerDetected = json["error"] as? Bool ?? false
             smsNotificationDetected = json["sms"] as? Bool ?? false
             navigationDetected = !currentURL.isEmpty && currentURL != originalURL
+            
             if let origHost = URL(string: originalURL)?.host,
                let curHost = URL(string: currentURL)?.host,
                curHost == origHost {
@@ -1100,11 +1103,8 @@ class LoginSiteWebSession: NSObject {
                 let curPath = URL(string: currentURL)?.path ?? ""
                 redirectedToHomepage = curPath != origPath && (curPath == "/" || curPath.contains("home") || curPath.contains("dashboard") || curPath.contains("account"))
             }
-            if successTextFound || redirectedToHomepage || navigationDetected || errorBannerDetected || smsNotificationDetected {
-                break
-            }
-            try? await Task.sleep(for: .milliseconds(200))
         }
+        
         return (successTextFound: successTextFound, redirectedToHomepage: redirectedToHomepage, navigationDetected: navigationDetected, errorBannerDetected: errorBannerDetected, smsNotificationDetected: smsNotificationDetected, finalPageContent: finalPageContent, finalURL: finalURL)
     }
 
@@ -1234,15 +1234,14 @@ class LoginSiteWebSession: NSObject {
         _ = await executeJS(js)
     }
 
-    func trueDetectionFillEmail(_ email: String) async -> (success: Bool, detail: String) {
-        let config = TrueDetectionService.TrueDetectionConfig()
+    func fastJoeIgnitionFillEmail(_ email: String, selector: String) async -> (success: Bool, detail: String) {
         let escaped = email.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
         let js = """
         (function() {
-            var el = document.querySelector('\(config.emailSelector)');
+            var el = document.querySelector('\(selector)');
             if (!el) {
                 var fallbacks = ['input[type="email"]', 'input[name="email"]', 'input[name="username"]', 'input[type="text"]:first-of-type'];
                 for (var i = 0; i < fallbacks.length; i++) { el = document.querySelector(fallbacks[i]); if (el) break; }
@@ -1261,20 +1260,19 @@ class LoginSiteWebSession: NSObject {
         """
         let result = await executeJS(js)
         if result == "OK" || result == "VALUE_MISMATCH" {
-            return (true, "TrueDetection email filled")
+            return (true, "Fast ignition email filled")
         }
-        return (false, "TrueDetection email fill failed: \(result ?? "nil")")
+        return (false, "Fast ignition email fill failed: \(result ?? "nil")")
     }
 
-    func trueDetectionFillPassword(_ password: String) async -> (success: Bool, detail: String) {
-        let config = TrueDetectionService.TrueDetectionConfig()
+    func fastJoeIgnitionFillPassword(_ password: String, selector: String) async -> (success: Bool, detail: String) {
         let escaped = password.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
         let js = """
         (function() {
-            var el = document.querySelector('\(config.passwordSelector)');
+            var el = document.querySelector('\(selector)');
             if (!el) { el = document.querySelector('input[type="password"]'); }
             if (!el) return 'NOT_FOUND';
             el.focus();
@@ -1290,14 +1288,13 @@ class LoginSiteWebSession: NSObject {
         """
         let result = await executeJS(js)
         if result == "OK" || result == "VALUE_MISMATCH" {
-            return (true, "TrueDetection password filled")
+            return (true, "Fast ignition password filled")
         }
-        return (false, "TrueDetection password fill failed: \(result ?? "nil")")
+        return (false, "Fast ignition password fill failed: \(result ?? "nil")")
     }
 
-    func trueDetectionTripleClickSubmit() async -> (success: Bool, detail: String) {
-        let config = TrueDetectionService.TrueDetectionConfig()
-        let escapedSelector = config.submitSelector
+    func fastTripleClickSubmit(selector: String) async -> (success: Bool, detail: String) {
+        let escapedSelector = selector
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
         let js = """
@@ -1319,23 +1316,9 @@ class LoginSiteWebSession: NSObject {
         """
         let result = await executeJS(js)
         if result == "CLICKED" {
-            return (true, "TrueDetection triple-click submit fired")
+            return (true, "Fast triple-click submit fired")
         }
-        return (false, "TrueDetection submit failed: \(result ?? "nil")")
-    }
-
-    func trueDetectionValidateSuccess() async -> (success: Bool, detail: String) {
-        let config = TrueDetectionService.TrueDetectionConfig()
-        let validated = await TrueDetectionService.shared.validateSuccess(
-            session: self,
-            config: config,
-            sessionId: monitoringSessionId ?? "unknown",
-            onLog: nil
-        )
-        if validated {
-            return (true, "TrueDetection success validated")
-        }
-        return (false, "TrueDetection: no success markers found")
+        return (false, "Fast submit failed: \(result ?? "nil")")
     }
 
     func pressEnterOnPasswordField() async -> (success: Bool, detail: String) {

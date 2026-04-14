@@ -28,43 +28,35 @@ class SmartButtonRecoveryService {
         let intermediateStates: [String]
     }
 
-    private let captureJS = """
-    (function() {
-        var loginTerms = ['log in','login','sign in','signin'];
-        var btns = document.querySelectorAll('button, input[type="submit"], a.btn, [role="button"], #login-submit, #loginSubmit');
-        var btn = document.querySelector('#login-submit') || document.querySelector('#loginSubmit');
-        if (!btn) {
-            for (var i = 0; i < btns.length; i++) {
-                var text = (btns[i].textContent || btns[i].value || '').replace(/[\\s]+/g,' ').toLowerCase().trim();
-                if (text.length > 50) continue;
-                for (var t = 0; t < loginTerms.length; t++) {
-                    if (text === loginTerms[t] || (text.indexOf(loginTerms[t]) !== -1 && text.length < 25)) { btn = btns[i]; break; }
-                }
-                if (btn) break;
-            }
-        }
-        if (!btn) {
-            btn = document.querySelector('button[type="submit"]') || document.querySelector('input[type="submit"]');
-        }
-        if (!btn) return JSON.stringify({found: false});
-        var style = window.getComputedStyle(btn);
-        return JSON.stringify({
-            found: true,
-            bgColor: style.backgroundColor,
-            textContent: (btn.textContent || btn.value || '').replace(/[\\s]+/g,' ').trim().substring(0, 50),
-            width: btn.getBoundingClientRect().width,
-            height: btn.getBoundingClientRect().height,
-            opacity: parseFloat(style.opacity),
-            borderColor: style.borderColor,
-            cursor: style.cursor,
-            pointerEvents: style.pointerEvents,
-            disabled: btn.disabled || false
-        });
-    })();
-    """
+    private func buildCaptureJS(selector: String) -> String {
+        let escapedSelector = selector
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        return """
+        (function() {
+            var btn = document.querySelector('\(escapedSelector)');
+            if (!btn) return JSON.stringify({found: false});
+            var style = window.getComputedStyle(btn);
+            return JSON.stringify({
+                found: true,
+                bgColor: style.backgroundColor,
+                textContent: (btn.textContent || btn.value || '').replace(/[\\s]+/g,' ').trim().substring(0, 50),
+                width: btn.getBoundingClientRect().width,
+                height: btn.getBoundingClientRect().height,
+                opacity: parseFloat(style.opacity),
+                borderColor: style.borderColor,
+                cursor: style.cursor,
+                pointerEvents: style.pointerEvents,
+                disabled: btn.disabled || false
+            });
+        })();
+        """
+    }
 
-    func captureFingerprint(executeJS: @escaping (String) async -> String?, sessionId: String) async -> ButtonFingerprint? {
-        guard let raw = await executeJS(captureJS),
+
+    func captureFingerprint(selector: String, executeJS: @escaping (String) async -> String?, sessionId: String) async -> ButtonFingerprint? {
+        let js = buildCaptureJS(selector: selector)
+        guard let raw = await executeJS(js),
               let data = raw.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let found = json["found"] as? Bool, found else {
@@ -88,6 +80,7 @@ class SmartButtonRecoveryService {
     }
 
     func waitForRecovery(
+        selector: String,
         originalFingerprint: ButtonFingerprint,
         executeJS: @escaping (String) async -> String?,
         host: String,
@@ -112,7 +105,8 @@ class SmartButtonRecoveryService {
                 return RecoveryResult(recovered: false, durationMs: elapsedMs, reason: "Timeout after \(elapsedMs)ms", intermediateStates: intermediateStates)
             }
 
-            guard let raw = await executeJS(captureJS),
+            let js = buildCaptureJS(selector: selector)
+            guard let raw = await executeJS(js),
                   let data = raw.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let found = json["found"] as? Bool, found else {

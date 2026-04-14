@@ -321,8 +321,19 @@ class TestDebugViewModel {
 
             logger.log("TestDebug: Wave \(currentWave)/\(totalWaves) — \(waveSessions.count) sessions", category: .login, level: .info)
 
-            let testURL = urlRotation.nextURL() ?? targetSite.url
-
+            var testURL = urlRotation.nextURL() ?? targetSite.url
+            if let customTarget = waveSessions.first?.settingsSnapshot.multiplexTarget {
+                switch customTarget {
+                case .joe: testURL = LoginTargetSite.joefortune.url
+                case .ignition: testURL = LoginTargetSite.ignition.url
+                case .custom1: testURL = URL(string: "https://flow-recorder.local/target1")!
+                case .custom2: testURL = URL(string: "https://flow-recorder.local/target2")!
+                case .custom3: testURL = URL(string: "https://flow-recorder.local/target3")!
+                case .custom4: testURL = URL(string: "https://flow-recorder.local/target4")!
+                case .custom5: testURL = URL(string: "https://flow-recorder.local/target5")!
+                default: break
+                }
+            }
             await withTaskGroup(of: Void.self) { group in
                 for session in waveSessions {
                     let credIndex = (session.index - 1) % creds.count
@@ -374,8 +385,19 @@ class TestDebugViewModel {
             let endIdx = min(startIdx + waveSize, retrySessions.count)
             let waveSessions = Array(retrySessions[startIdx..<endIdx])
 
-            let testURL = urlRotation.nextURL() ?? targetSite.url
-
+            var testURL = urlRotation.nextURL() ?? targetSite.url
+            if let customTarget = waveSessions.first?.settingsSnapshot.multiplexTarget {
+                switch customTarget {
+                case .joe: testURL = LoginTargetSite.joefortune.url
+                case .ignition: testURL = LoginTargetSite.ignition.url
+                case .custom1: testURL = URL(string: "https://flow-recorder.local/target1")!
+                case .custom2: testURL = URL(string: "https://flow-recorder.local/target2")!
+                case .custom3: testURL = URL(string: "https://flow-recorder.local/target3")!
+                case .custom4: testURL = URL(string: "https://flow-recorder.local/target4")!
+                case .custom5: testURL = URL(string: "https://flow-recorder.local/target5")!
+                default: break
+                }
+            }
             logger.log("TestDebug: Retry Wave \(currentWave)/\(retryWaveCount) — \(waveSessions.count) sessions", category: .login, level: .info)
 
             await withTaskGroup(of: Void.self) { group in
@@ -437,12 +459,14 @@ class TestDebugViewModel {
         settings.trueDetectionEnabled = true
         settings.trueDetectionPriority = true
 
+        let actualProxyTarget = snapshot.multiplexTarget ?? proxyTarget
+        
         let sessionEngine = LoginAutomationEngine()
         sessionEngine.debugMode = false
         sessionEngine.stealthEnabled = snapshot.stealthJSInjection
         sessionEngine.automationSettings = settings
-        sessionEngine.proxyTarget = proxyTarget
-        sessionEngine.networkConfigOverride = snapshot.buildNetworkConfig(proxyTarget: proxyTarget)
+        sessionEngine.proxyTarget = actualProxyTarget
+        sessionEngine.networkConfigOverride = snapshot.buildNetworkConfig(proxyTarget: actualProxyTarget)
 
         let sessionTimeout: TimeInterval = 120
         let outcome: LoginOutcome = await withTaskGroup(of: LoginOutcome.self) { group in

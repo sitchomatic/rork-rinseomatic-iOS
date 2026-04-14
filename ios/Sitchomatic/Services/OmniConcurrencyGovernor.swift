@@ -58,10 +58,13 @@ nonisolated struct ConcurrencyHistoryPoint: Sendable {
     let concurrency: Int
 }
 
+typealias AdaptiveConcurrencyEngine = OmniConcurrencyGovernor
+typealias AIPredictiveConcurrencyGovernor = OmniConcurrencyGovernor
+
 @Observable
 @MainActor
-class AdaptiveConcurrencyEngine {
-    static let shared = AdaptiveConcurrencyEngine()
+class OmniConcurrencyGovernor {
+    static let shared = OmniConcurrencyGovernor()
 
     private(set) var livePairCount: Int = 1
     var maxCap: Int = 4
@@ -570,5 +573,25 @@ class AdaptiveConcurrencyEngine {
         if isBackground { score -= 0.1 }
 
         return max(0.0, min(1.0, score))
+}
+
+extension OmniConcurrencyGovernor {
+    var currentRecommendedConcurrency: Int { livePairCount }
+    var currentStabilityScore: Double { factorScores.stability }
+    var adjustmentHistory: [ConcurrencyDecision] { Array(decisions.prefix(30)) }
+    var totalAdjustments: Int { decisions.count }
+
+    func start(initialConcurrency: Int = 5) {
+        start(cap: initialConcurrency, strategy: .rorkAISmart, fixedPairs: initialConcurrency, liveUserPairs: initialConcurrency)
+    }
+
+    func recommendConcurrency(requestedMax: Int) -> Int {
+        return min(requestedMax, livePairCount)
+    }
+
+    func resetAll() {
+        stop()
+        decisions.removeAll()
+        concurrencyHistory.removeAll()
     }
 }

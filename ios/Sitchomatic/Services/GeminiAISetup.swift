@@ -47,6 +47,7 @@ enum GeminiAISetup {
 final class GeminiKeychain {
     static let shared = GeminiKeychain()
     private let keyIdentifier = "com.sitchomatic.gemini.apikey"
+    private var cachedKey: String?
     
     var hasAPIKey: Bool {
         getAPIKey() != nil
@@ -54,6 +55,7 @@ final class GeminiKeychain {
     
     @discardableResult
     func setAPIKey(_ key: String) -> Bool {
+        cachedKey = key
         guard let data = key.data(using: .utf8) else { return false }
         
         let query: [String: Any] = [
@@ -75,6 +77,8 @@ final class GeminiKeychain {
     }
     
     func getAPIKey() -> String? {
+        if let cached = cachedKey { return cached }
+        
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: keyIdentifier,
@@ -86,12 +90,15 @@ final class GeminiKeychain {
         let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
         
         if status == errSecSuccess, let data = dataTypeRef as? Data {
-            return String(data: data, encoding: .utf8)
+            let key = String(data: data, encoding: .utf8)
+            cachedKey = key
+            return key
         }
         return nil
     }
     
     func removeAPIKey() {
+        cachedKey = nil
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: keyIdentifier

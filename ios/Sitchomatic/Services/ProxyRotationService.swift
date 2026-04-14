@@ -65,10 +65,15 @@ nonisolated struct ProfileStorageCounts: Sendable {
 class ProxyRotationService {
     static let shared = ProxyRotationService()
 
-    nonisolated enum ProxyTarget: String, Sendable {
+    nonisolated enum ProxyTarget: String, Sendable, CaseIterable {
         case joe
         case ignition
         case ppsr
+        case custom1
+        case custom2
+        case custom3
+        case custom4
+        case custom5
     }
 
     var savedProxies: [ProxyConfig] = []

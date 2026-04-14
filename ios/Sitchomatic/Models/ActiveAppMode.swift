@@ -14,7 +14,6 @@ nonisolated enum ActiveAppMode: String, Sendable {
     case vault
     case ipScoreTest
     case dualFind
-    case settingsAndTesting
     case proxyManager
     case testDebug
 }

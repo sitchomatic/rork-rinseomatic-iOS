@@ -41,10 +41,52 @@ class SecureProxyURLSchemeHandler: NSObject, WKURLSchemeHandler {
             components?.scheme = "http"
         }
         
-        guard let finalURL = components?.url, let host = finalURL.host else { return }
+        guard let finalURL = components?.url, let host = finalURL.host?.lowercased() else { return }
+        
+        // Global interception for the flow-recorder test domain
+        if host == "flow-recorder.local" {
+            let html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Automation Test Target</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <style>
+                    body { font-family: sans-serif; padding: 20px; }
+                    input { display: block; margin-bottom: 10px; padding: 8px; width: 100%; max-width: 300px; }
+                    button { padding: 10px 20px; background: #007aff; color: white; border: none; border-radius: 4px; }
+                    .error-banner { color: white; background: red; padding: 10px; display: none; margin-bottom: 10px; }
+                </style>
+            </head>
+            <body>
+                <h1>Local Automation Target</h1>
+                <div class="error-banner" id="error-banner"></div>
+                <form id="login-form" action="/submit" method="post" onsubmit="event.preventDefault(); document.getElementById('error-banner').style.display='block'; document.getElementById('error-banner').innerText='temporarily disabled';">
+                    <input type="text" id="email" name="email" placeholder="Email Address" />
+                    <input type="text" id="username" name="username" placeholder="Username" />
+                    <input type="password" id="password" name="password" placeholder="Password" />
+                    <input type="password" id="login-password" name="login-password" placeholder="Password" />
+                    <button type="submit" id="submit" class="submit-btn primary">Log in</button>
+                    <button type="submit" id="login-submit" class="login-button">Log In To Account</button>
+                </form>
+                <div style="height: 2000px; background: linear-gradient(to bottom, #fff, #eee); margin-top: 50px;"></div>
+                <div style="position: absolute; top: 1500px;">
+                    <input type="text" id="far-field" placeholder="Scroll to me" />
+                </div>
+            </body>
+            </html>
+            """
+            
+            let response = HTTPURLResponse(url: finalURL, statusCode: 200, httpVersion: "1.1", headerFields: ["Content-Type": "text/html; charset=utf-8"])!
+            
+            urlSchemeTask.didReceive(response)
+            urlSchemeTask.didReceive(html.data(using: .utf8)!)
+            urlSchemeTask.didFinish()
+            return
+        }
         
         let blocklist = ["doubleclick.net", "facebook.com", "google-analytics.com", "hotjar.com"]
-        let lowerHost = host.lowercased()
+        let lowerHost = host
         
         if blocklist.contains(where: { lowerHost.contains($0) }) {
             let error = NSError(domain: "ZeroTrustPolicy", code: 403, userInfo: [NSLocalizedDescriptionKey: "Origin blocked by Zero-Trust policy"])

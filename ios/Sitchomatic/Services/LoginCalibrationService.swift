@@ -170,29 +170,6 @@ class LoginCalibrationService {
 
         let selectorJSON = selectors.map { "'\($0.replacingOccurrences(of: "'", with: "\\'"))'" }.joined(separator: ",")
 
-        if let coords = m.coordinates {
-            return """
-            (function(){
-                var selectors = [\(selectorJSON)];
-                for (var i = 0; i < selectors.length; i++) {
-                    try {
-                        var el = document.querySelector(selectors[i]);
-                        if (el && !el.disabled && (el.offsetParent !== null || el.offsetWidth > 0)) return el;
-                    } catch(e) {}
-                }
-                var coordEl = document.elementFromPoint(\(Int(coords.x)), \(Int(coords.y)));
-                if (coordEl) {
-                    var tagName = coordEl.tagName.toLowerCase();
-                    if (tagName === 'input' || tagName === 'button' || tagName === 'a' || coordEl.getAttribute('role') === 'button') return coordEl;
-                    var nearInput = coordEl.querySelector('input') || coordEl.closest('button') || coordEl.closest('[role="button"]');
-                    if (nearInput) return nearInput;
-                    return coordEl;
-                }
-                return null;
-            })()
-            """
-        }
-
         return """
         (function(){
             var selectors = [\(selectorJSON)];

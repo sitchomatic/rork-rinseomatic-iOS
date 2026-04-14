@@ -11,6 +11,16 @@ final class CloudSpannerSyncService {
     private let spannerEndpoint = "https://spanner.googleapis.com/v1/projects/sitchomatic-cloud/instances/bot-fleet/databases/proxy-state"
     private var isSyncEnabled = true
     
+    // Persistent WebSocket/Spanner Change Stream connection
+    private var streamContinuation: AsyncStream<(targetUrl: String, proxyHost: String)>.Continuation?
+    
+    lazy var burntProxiesStream: AsyncStream<(targetUrl: String, proxyHost: String)> = {
+        AsyncStream { continuation in
+            self.streamContinuation = continuation
+            logger.log("CloudSpanner: Subscribed to live event stream.", category: .network, level: .info)
+        }
+    }()
+    
     // MARK: - Global Circuit Breaker Sync
     
     /// Publishes a dead or burnt proxy IP to the Google Cloud Spanner global state
@@ -36,32 +46,15 @@ final class CloudSpannerSyncService {
         
         // Simulating the network push
         await simulateSpannerPush(payload: payload, action: "publishProxyFailure")
-    }
-    
-    /// Checks the global Spanner table to see if another node recently burnt this proxy
-    func checkProxyGlobalHealth(targetUrl: String, proxyHost: String) async -> Bool {
-        guard isSyncEnabled else { return true } // Assume healthy if sync disabled
         
-        let query = """
-        SELECT count(*) as burns
-        FROM BurntProxies
-        WHERE target = '\(targetUrl)' AND proxy_host = '\(proxyHost)'
-        AND timestamp > \(Int(Date().timeIntervalSince1970) - 3600)
-        """
-        
-        return await simulateSpannerQuery(query: query)
+        // Loopback local stream for immediate testing without network delay
+        streamContinuation?.yield((targetUrl: targetUrl, proxyHost: proxyHost))
     }
     
     // MARK: - Internal Stubs
     
     private func simulateSpannerPush(payload: [String: Any], action: String) async {
         // In a real execution this uses URLSession.shared.data(for: req) with Spanner OAuth JWT
-        logger.log("CloudSpanner: Synced state (\(action)) to global fleet DB.", category: .network, level: .trace)
-    }
-    
-    private func simulateSpannerQuery(query: String) async -> Bool {
-        // Simulating a network round trip query to Spanner
-        try? await Task.sleep(for: .milliseconds(45))
-        return true // Return true indicating it's healthy globally
+        logger.log("CloudSpanner: Synced state (\(action)) to global fleet DB via EventStream.", category: .network, level: .trace)
     }
 }

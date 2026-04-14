@@ -222,4 +222,57 @@ class SmartPageSettlementService {
         guard let history = hostSettlementHistory[host], !history.isEmpty else { return 0 }
         return history.reduce(0, +) / history.count
     }
+
+    func waitForGenericSettlement(
+        executeJS: @escaping (String) async -> String?,
+        maxTimeoutMs: Int,
+        networkIdleThresholdMs: Int = 1000,
+        domStableThresholdMs: Int = 800
+    ) async -> Bool {
+        let start = Date()
+        await injectMonitor(executeJS: executeJS)
+        
+        while true {
+            let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
+            if elapsedMs >= maxTimeoutMs {
+                logger.log("GenericSettlement: TIMEOUT reached (\(maxTimeoutMs)ms)", category: .automation, level: .warning)
+                return false
+            }
+
+            guard let raw = await executeJS(pollJS),
+                  let data = raw.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                try? await Task.sleep(for: .milliseconds(400))
+                continue
+            }
+            
+            if json["error"] != nil {
+                await injectMonitor(executeJS: executeJS)
+                try? await Task.sleep(for: .milliseconds(400))
+                continue
+            }
+
+            let readyState = json["readyState"] as? String ?? ""
+            let pendingNet = json["pendingNet"] as? Int ?? 0
+            let netIdleMs = json["netIdleMs"] as? Int ?? 0
+            let domIdleMs = json["domIdleMs"] as? Int ?? 0
+
+            let readyStateComplete = readyState == "complete"
+            let networkIdle = pendingNet == 0 && netIdleMs >= networkIdleThresholdMs
+            let domStable = domIdleMs >= domStableThresholdMs
+
+            if readyStateComplete && networkIdle && domStable {
+                logger.log("GenericSettlement: SETTLED smartly in \(elapsedMs)ms (JS Load, NetworkIdle, DOM mutation quiet)", category: .automation, level: .success)
+                return true
+            }
+
+            // Fallback dynamic settlement if we partially stabilized but are taking too long
+            if elapsedMs > 6000 && readyStateComplete && (networkIdle || domStable) {
+                logger.log("GenericSettlement: PARTIAL SETTLEMENT in \(elapsedMs)ms (Network=\(networkIdle), DOM=\(domStable))", category: .automation, level: .info)
+                return true
+            }
+
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+    }
 }

@@ -1,8 +1,6 @@
 import Foundation
 
-@MainActor
-class BatchTelemetryService {
-    static let shared = BatchTelemetryService()
+actor BatchTelemetryService {
 
     private let logger = DebugLogger.shared
     private let persistKey = "batch_telemetry_v1"

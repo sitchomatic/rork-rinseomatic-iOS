@@ -43,6 +43,7 @@ nonisolated enum TestDebugVariationMode: String, CaseIterable, Sendable {
     case network = "Network Focus"
     case automation = "Automation Focus"
     case smartMatrix = "Smart Matrix"
+    case sitchomatic1000 = "Sitchomatic 1000"
 
     var icon: String {
         switch self {
@@ -50,6 +51,7 @@ nonisolated enum TestDebugVariationMode: String, CaseIterable, Sendable {
         case .network: "network"
         case .automation: "gearshape.2.fill"
         case .smartMatrix: "chart.bar.xaxis"
+        case .sitchomatic1000: "server.rack"
         }
     }
 
@@ -59,6 +61,7 @@ nonisolated enum TestDebugVariationMode: String, CaseIterable, Sendable {
         case .network: "WireGuard, proxies, DNS, NodeMaven"
         case .automation: "Patterns, typing, delays, stealth"
         case .smartMatrix: "One variable at a time"
+        case .sitchomatic1000: "7 concurrent endpoints with isolated IPs"
         }
     }
 }
@@ -156,6 +159,7 @@ nonisolated struct TestDebugSettingsSnapshot: Sendable {
     let clearCookiesBetweenAttempts: Bool
     let sessionIsolation: AutomationSettings.SessionIsolationMode
     let webViewPoolIndex: Int
+    var multiplexTarget: ProxyRotationService.ProxyTarget? = nil // Sitchomatic 1000 Routing
 
     func toAutomationSettings(base: AutomationSettings) -> AutomationSettings {
         var s = base

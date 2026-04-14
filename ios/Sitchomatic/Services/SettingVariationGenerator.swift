@@ -65,6 +65,8 @@ class SettingVariationGenerator {
             raw = generateAutomationVariations(count: count, site: site, overrides: overrides)
         case .smartMatrix:
             raw = generateSmartMatrix(count: count, site: site, overrides: overrides)
+        case .sitchomatic1000:
+            raw = generateMultiplex1000Mode(overrides: overrides)
         }
         return deduplicateSessions(raw)
     }
@@ -526,5 +528,51 @@ class SettingVariationGenerator {
             parts.append("[PIN: TD=\(snapshot.trueDetectionEnabled ? "ON" : "OFF")]")
         }
         return parts
+    }
+
+    // MARK: - Sitchomatic 1000 Multiplex Feature
+    private func generateMultiplex1000Mode(overrides: TestDebugVariationOverrides = TestDebugVariationOverrides()) -> [TestDebugSession] {
+        var sessions: [TestDebugSession] = []
+        let poolSize = 24
+        
+        let targetList: [ProxyRotationService.ProxyTarget] = [
+            .joe, .ignition, .custom1, .custom2, .custom3, .custom4, .custom5
+        ]
+        
+        for i in 0..<7 {
+            let proxyTarget = targetList[i]
+            
+            // Generate entirely distinct network binding parameters per target
+            let snapshot = TestDebugSettingsSnapshot(
+                connectionMode: .proxy, // unified independent SOCKS5 mapping
+                wireGuardConfigIndex: nil,
+                pattern: patterns[i % patterns.count],
+                typingSpeedMinMs: 80,
+                typingSpeedMaxMs: 150,
+                stealthJSInjection: true,
+                humanMouseMovement: true,
+                humanScrollJitter: true,
+                viewportRandomization: true,
+                fingerprintSpoofing: true,
+                trueDetectionEnabled: true,
+                tabBetweenFields: false,
+                pageLoadExtraDelayMs: 1500,
+                preSubmitDelayMs: 400,
+                postSubmitDelayMs: 1000,
+                clearCookiesBetweenAttempts: true,
+                sessionIsolation: .full, // Strict storage isolation per session
+                webViewPoolIndex: i % poolSize,
+                multiplexTarget: proxyTarget // NEW property
+            )
+            
+            let finalSnapshot = applyOverrides(snapshot, overrides: overrides)
+            sessions.append(TestDebugSession(
+                index: i + 1,
+                differentiator: "MUX-1000 [\(proxyTarget.rawValue.uppercased())]",
+                settingsSnapshot: finalSnapshot
+            ))
+        }
+        
+        return sessions
     }
 }

@@ -238,6 +238,12 @@ class DualFindViewModel {
         log("V5.2 Auto-advance: \(autoAdvanceEnabled ? "ON" : "OFF") · Submit: triple-click escalating dwell primary")
 
         isRunning = true
+        OmniConcurrencyGovernor.shared.start(
+            cap: sessionCount.perSite * 2,
+            strategy: .fixedPairs,
+            fixedPairs: sessionCount.perSite * 2,
+            liveUserPairs: sessionCount.perSite * 2
+        )
         DeviceProxyService.shared.notifyBatchStart()
         backgroundService.beginExtendedBackgroundExecution(reason: "Dual Find Account scan")
 
@@ -286,6 +292,12 @@ class DualFindViewModel {
         log("Resuming Dual Find — Set \(currentSetIndex + 1)/\(passwordSets.count) — JOE Email \(joeEmailIndex + 1)/\(totalEmails) PW \(joePasswordIndex + 1), IGN Email \(ignEmailIndex + 1)/\(totalEmails) PW \(ignPasswordIndex + 1)")
 
         isRunning = true
+        OmniConcurrencyGovernor.shared.start(
+            cap: sessionCount.perSite * 2,
+            strategy: .fixedPairs,
+            fixedPairs: sessionCount.perSite * 2,
+            liveUserPairs: sessionCount.perSite * 2
+        )
         DeviceProxyService.shared.notifyBatchStart()
         backgroundService.beginExtendedBackgroundExecution(reason: "Dual Find Account resume")
 
@@ -459,7 +471,7 @@ class DualFindViewModel {
                 let cal = calibrations[i]
                 let fillResult = await session.fillPasswordCalibrated(password, calibration: cal)
                 if !fillResult.success {
-                    let tdResult = await session.trueDetectionFillPassword(password)
+                    let tdResult = await session.fastJoeIgnitionFillPassword(password, selector: automationSettings.ignPasswordSelector)
                     if !tdResult.success {
                         log("[\(label)] Password fill failed — trying legacy", level: .warning)
                         _ = await session.fillPassword(password)
@@ -568,7 +580,7 @@ class DualFindViewModel {
             let cal = getCalibration(site: site, index: sessionIndex)
             let emailFillResult = await session.fillUsernameCalibrated(email, calibration: cal)
             if !emailFillResult.success {
-                let tdResult = await session.trueDetectionFillEmail(email)
+                let tdResult = await session.fastJoeIgnitionFillEmail(email, selector: automationSettings.ignEmailSelector)
                 if !tdResult.success {
                     log("V5.2 [\(label)] Email fill failed for \(email) — trying legacy", level: .warning)
                     _ = await session.fillUsername(email)
@@ -855,7 +867,7 @@ class DualFindViewModel {
         let cal = getCalibration(site: site, index: sessionIndex)
         let fillResult = await session.fillUsernameCalibrated(email, calibration: cal)
         if !fillResult.success {
-            let tdResult = await session.trueDetectionFillEmail(email)
+            let tdResult = await session.fastJoeIgnitionFillEmail(email, selector: automationSettings.ignEmailSelector)
             if !tdResult.success {
                 _ = await session.fillUsername(email)
             }
@@ -980,7 +992,7 @@ class DualFindViewModel {
 
         let fillResult = await newSession.fillPasswordCalibrated(password, calibration: cal)
         if !fillResult.success {
-            _ = await newSession.trueDetectionFillPassword(password)
+            _ = await newSession.fastJoeIgnitionFillPassword(password, selector: automationSettings.ignPasswordSelector)
         }
         log("[\(label)] Replacement session ready")
     }
@@ -1072,6 +1084,7 @@ class DualFindViewModel {
         isJoePaused = false
         isIgnPaused = false
         waitingForSetAdvance = false
+        OmniConcurrencyGovernor.shared.stop()
         let stoppedEarly = isStopping
         isStopping = false
         backgroundService.endExtendedBackgroundExecution()

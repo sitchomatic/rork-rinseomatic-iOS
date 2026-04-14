@@ -25,6 +25,8 @@ class PPSRStealthService {
         let webglRenderer: String
         let connectionDownlink: Double
         let connectionRtt: Int
+        var ja3Fingerprint: String? = nil
+        var http2Settings: String? = nil
     }
 
     private let trustedProfiles: [SessionProfile] = [
@@ -244,6 +246,8 @@ class PPSRStealthService {
         Return ONLY valid JSON matching this schema:
         {
           "userAgent": "String (latest iOS Safari)",
+          "ja3Fingerprint": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513-21,29-23-24,0",
+          "http2Settings": "1:65536,2:0,3:1000,4:6291456,6:262144",
           "viewportWidth": 393,
           "viewportHeight": 852,
           "language": "en-AU",
@@ -283,7 +287,9 @@ class PPSRStealthService {
             webglVendor: "Apple Inc.",
             webglRenderer: "Apple GPU",
             connectionDownlink: dict["connectionDownlink"] as? Double ?? 15.0,
-            connectionRtt: dict["connectionRtt"] as? Int ?? 45
+            connectionRtt: dict["connectionRtt"] as? Int ?? 45,
+            ja3Fingerprint: dict["ja3Fingerprint"] as? String,
+            http2Settings: dict["http2Settings"] as? String
         )
     }
 

@@ -22,36 +22,36 @@ class LoginAutomationEngine {
     var automationSettings: AutomationSettings = AutomationSettings()
     var proxyTarget: ProxyRotationService.ProxyTarget = .joe
     var networkConfigOverride: ActiveNetworkConfig?
-    private let logger = DebugLogger.shared
-    private let visionML = VisionMLService.shared
-    private let debugButtonService = DebugLoginButtonService.shared
-    private let trueDetection = TrueDetectionService.shared
-    private let networkFactory = NetworkSessionFactory.shared
-    private let deadSessionDetector = DeadSessionDetector.shared
-    private let replayLogger = SessionReplayLogger.shared
-    private let circuitBreaker = HostCircuitBreakerService.shared
-    private let challengeClassifier = ChallengePageClassifier.shared
-    private let crashRecovery = WebViewCrashRecoveryService.shared
-    private let lifetimeBudget = WebViewLifetimeBudgetService.shared
-    private let screenshotDedup = ScreenshotDedupService.shared
-    private lazy var hostFingerprint: HostFingerprintLearningService = .shared
-    private let adaptiveRetry = AdaptiveRetryService.shared
-    private let urlQualityScoring = URLQualityScoringService.shared
-    private let confidenceEngine = ConfidenceResultEngine.shared
-    private let aiProxyStrategy = AIProxyStrategyService.shared
-    private let aiChallengeSolver = AIChallengePageSolverService.shared
-    private let aiURLOptimizer = AILoginURLOptimizerService.shared
-    private let aiFingerprintTuning = AIFingerprintTuningService.shared
-    private let aiSessionHealth = AISessionHealthMonitorService.shared
-    private let aiCredentialPriority = AICredentialPriorityScoringService.shared
-    private let aiAntiDetection = AIAntiDetectionAdaptiveService.shared
-    private let customTools = AICustomToolsCoordinator.shared
-    private let aiInteractionGraph = AIReinforcementInteractionGraph.shared
-    private let activityMonitor = SessionActivityMonitor.shared
-    private let liveSpeed = LiveSpeedAdaptationService.shared
-    private let strictDetection = StrictLoginDetectionEngine.shared
-    private let crimsonOrchestrator = CrimsonSweepOrchestrator.shared
-    private let janitor = WebViewLifecycleManager.shared
+    private let logger: DebugLogger
+    private let visionML: VisionMLService
+    private let debugButtonService: DebugLoginButtonService
+    private let networkFactory: NetworkSessionFactory
+    private let deadSessionDetector: DeadSessionDetector
+    private let replayLogger: SessionReplayLogger
+    private let circuitBreaker: HostCircuitBreakerService
+    private let challengeClassifier: ChallengePageClassifier
+    private let crashRecovery: WebViewCrashRecoveryService
+    private let lifetimeBudget: WebViewLifetimeBudgetService
+    private let screenshotDedup: ScreenshotDedupService
+    private let hostFingerprint: HostFingerprintLearningService
+    private let adaptiveRetry: AdaptiveRetryService
+    private let urlQualityScoring: URLQualityScoringService
+    private let confidenceEngine: ConfidenceResultEngine
+    private let aiProxyStrategy: AIProxyStrategyService
+    private let aiChallengeSolver: AIChallengePageSolverService
+    private let aiURLOptimizer: AILoginURLOptimizerService
+    private let aiFingerprintTuning: AIFingerprintTuningService
+    private let aiSessionHealth: AISessionHealthMonitorService
+    private let aiCredentialPriority: AICredentialPriorityScoringService
+    private let aiAntiDetection: AIAntiDetectionAdaptiveService
+    private let customTools: AICustomToolsCoordinator
+    private let aiInteractionGraph: AIReinforcementInteractionGraph
+    private let activityMonitor: SessionActivityMonitor
+    private let liveSpeed: LiveSpeedAdaptationService
+    private let strictDetection: StrictLoginDetectionEngine
+    private let crimsonOrchestrator: CrimsonSweepOrchestrator
+    private let janitor: WebViewLifecycleManager
+
     var onScreenshot: ((PPSRDebugScreenshot) -> Void)?
     var onPurgeScreenshots: (([String]) -> Void)?
     var onConnectionFailure: ((String) -> Void)?
@@ -61,6 +61,68 @@ class LoginAutomationEngine {
     var onURLSuccess: ((String) -> Void)?
     var onResponseTime: ((String, TimeInterval) -> Void)?
     var onBlankScreenshot: ((String) -> Void)?
+
+    init(
+        logger: DebugLogger = .shared,
+        visionML: VisionMLService = .shared,
+        debugButtonService: DebugLoginButtonService = .shared,
+        networkFactory: NetworkSessionFactory = .shared,
+        deadSessionDetector: DeadSessionDetector = .shared,
+        replayLogger: SessionReplayLogger = .shared,
+        circuitBreaker: HostCircuitBreakerService = .shared,
+        challengeClassifier: ChallengePageClassifier = .shared,
+        crashRecovery: WebViewCrashRecoveryService = .shared,
+        lifetimeBudget: WebViewLifetimeBudgetService = .shared,
+        screenshotDedup: ScreenshotDedupService = .shared,
+        hostFingerprint: HostFingerprintLearningService = .shared,
+        adaptiveRetry: AdaptiveRetryService = .shared,
+        urlQualityScoring: URLQualityScoringService = .shared,
+        confidenceEngine: ConfidenceResultEngine = .shared,
+        aiProxyStrategy: AIProxyStrategyService = .shared,
+        aiChallengeSolver: AIChallengePageSolverService = .shared,
+        aiURLOptimizer: AILoginURLOptimizerService = .shared,
+        aiFingerprintTuning: AIFingerprintTuningService = .shared,
+        aiSessionHealth: AISessionHealthMonitorService = .shared,
+        aiCredentialPriority: AICredentialPriorityScoringService = .shared,
+        aiAntiDetection: AIAntiDetectionAdaptiveService = .shared,
+        customTools: AICustomToolsCoordinator = .shared,
+        aiInteractionGraph: AIReinforcementInteractionGraph = .shared,
+        activityMonitor: SessionActivityMonitor = .shared,
+        liveSpeed: LiveSpeedAdaptationService = .shared,
+        strictDetection: StrictLoginDetectionEngine = .shared,
+        crimsonOrchestrator: CrimsonSweepOrchestrator = .shared,
+        janitor: WebViewLifecycleManager = .shared
+    ) {
+        self.logger = logger
+        self.visionML = visionML
+        self.debugButtonService = debugButtonService
+        self.networkFactory = networkFactory
+        self.deadSessionDetector = deadSessionDetector
+        self.replayLogger = replayLogger
+        self.circuitBreaker = circuitBreaker
+        self.challengeClassifier = challengeClassifier
+        self.crashRecovery = crashRecovery
+        self.lifetimeBudget = lifetimeBudget
+        self.screenshotDedup = screenshotDedup
+        self.hostFingerprint = hostFingerprint
+        self.adaptiveRetry = adaptiveRetry
+        self.urlQualityScoring = urlQualityScoring
+        self.confidenceEngine = confidenceEngine
+        self.aiProxyStrategy = aiProxyStrategy
+        self.aiChallengeSolver = aiChallengeSolver
+        self.aiURLOptimizer = aiURLOptimizer
+        self.aiFingerprintTuning = aiFingerprintTuning
+        self.aiSessionHealth = aiSessionHealth
+        self.aiCredentialPriority = aiCredentialPriority
+        self.aiAntiDetection = aiAntiDetection
+        self.customTools = customTools
+        self.aiInteractionGraph = aiInteractionGraph
+        self.activityMonitor = activityMonitor
+        self.liveSpeed = liveSpeed
+        self.strictDetection = strictDetection
+        self.crimsonOrchestrator = crimsonOrchestrator
+        self.janitor = janitor
+    }
 
     var canStartSession: Bool {
         activeSessions < effectiveMaxConcurrency
@@ -810,15 +872,7 @@ class LoginAutomationEngine {
                 attempt.logs.append(PPSRLogEntry(message: "Auto-calibrated: email=\(autoCal.emailField?.cssSelector ?? "nil") pass=\(autoCal.passwordField?.cssSelector ?? "nil") btn=\(autoCal.loginButton?.cssSelector ?? "nil")", level: .info))
                 logger.log("Auto-calibration SUCCESS", category: .automation, level: .success, sessionId: sessionId)
             } else {
-                attempt.logs.append(PPSRLogEntry(message: "Auto-calibration failed — trying Vision ML calibration", level: .warning))
-                let visionCal = await visionCalibrateSession(session: session, forURL: targetURLString, sessionId: sessionId)
-                if let visionCal {
-                    calibrationService.saveCalibration(visionCal, forURL: targetURLString)
-                    calibration = visionCal
-                    attempt.logs.append(PPSRLogEntry(message: "Vision ML calibrated: confidence=\(String(format: "%.0f%%", visionCal.confidence * 100))", level: .success))
-                } else {
-                    attempt.logs.append(PPSRLogEntry(message: "Vision ML calibration also failed — using generic selectors", level: .warning))
-                }
+                attempt.logs.append(PPSRLogEntry(message: "Auto-calibration failed — using generic hardcoded selectors", level: .warning))
             }
         } else {
             attempt.logs.append(PPSRLogEntry(message: "Using saved calibration (confidence: \(String(format: "%.0f%%", (calibration?.confidence ?? 0) * 100)))", level: .info))
@@ -993,18 +1047,35 @@ class LoginAutomationEngine {
                 if alreadyHasEmail && alreadyHasPass {
                     attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle): pattern reported incomplete but fields already contain correct values — skipping re-fill", level: .info))
                 } else {
-                    attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle): field fill failed — clearing fields then falling back to calibrated+legacy fill", level: .warning))
+                    attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle): field fill failed — clearing fields and using strict routing", level: .warning))
                     await session.clearAllInputFields()
                     try? await Task.sleep(for: .milliseconds(automationSettings.preTypingDelayMs))
-                    if !alreadyHasEmail {
-                        let calUserResult = await session.fillUsernameCalibrated(attempt.credential.username, calibration: calibration)
-                        attempt.logs.append(PPSRLogEntry(message: "Calibrated email fill: \(calUserResult.detail)", level: calUserResult.success ? .info : .warning))
-                        try? await Task.sleep(for: .milliseconds(automationSettings.interFieldDelayMs))
-                    }
-                    if !alreadyHasPass {
-                        let calPassResult = await session.fillPasswordCalibrated(attempt.credential.password, calibration: calibration)
-                        attempt.logs.append(PPSRLogEntry(message: "Calibrated password fill: \(calPassResult.detail)", level: calPassResult.success ? .info : .warning))
-                        try? await Task.sleep(for: .milliseconds(automationSettings.postTypingDelayMs))
+                    
+                    let targetStr = session.targetURL.absoluteString.lowercased()
+                    let isJoeOrIgnition = targetStr.contains("joe") || targetStr.contains("ignition")
+                    
+                    if isJoeOrIgnition {
+                        if !alreadyHasEmail {
+                            let jsResult = await session.fastJoeIgnitionFillEmail(attempt.credential.username, selector: automationSettings.ignEmailSelector)
+                            attempt.logs.append(PPSRLogEntry(message: "Fast JS email fill: \(jsResult.detail)", level: jsResult.success ? .info : .warning))
+                            try? await Task.sleep(for: .milliseconds(automationSettings.interFieldDelayMs))
+                        }
+                        if !alreadyHasPass {
+                            let jsResult = await session.fastJoeIgnitionFillPassword(attempt.credential.password, selector: automationSettings.ignPasswordSelector)
+                            attempt.logs.append(PPSRLogEntry(message: "Fast JS password fill: \(jsResult.detail)", level: jsResult.success ? .info : .warning))
+                            try? await Task.sleep(for: .milliseconds(automationSettings.postTypingDelayMs))
+                        }
+                    } else {
+                        if !alreadyHasEmail {
+                            let calUserResult = await session.fillUsernameCalibrated(attempt.credential.username, calibration: calibration)
+                            attempt.logs.append(PPSRLogEntry(message: "Calibrated email fill: \(calUserResult.detail)", level: calUserResult.success ? .info : .warning))
+                            try? await Task.sleep(for: .milliseconds(automationSettings.interFieldDelayMs))
+                        }
+                        if !alreadyHasPass {
+                            let calPassResult = await session.fillPasswordCalibrated(attempt.credential.password, calibration: calibration)
+                            attempt.logs.append(PPSRLogEntry(message: "Calibrated password fill: \(calPassResult.detail)", level: calPassResult.success ? .info : .warning))
+                            try? await Task.sleep(for: .milliseconds(automationSettings.postTypingDelayMs))
+                        }
                     }
                 }
             }
@@ -1053,66 +1124,48 @@ class LoginAutomationEngine {
             }
 
             if !patternResult.submitTriggered {
-                attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle): pattern submit failed — trying debug button → calibrated → legacy click strategies", level: .warning))
-                var legacySubmitOK = false
+                attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle): pattern submit failed — evaluating strict fallback strategies", level: .warning))
+                var submitOK = false
 
-                let debugBtnResult = await debugButtonService.replaySuccessfulMethod(session: session, url: targetURLString)
-                if debugBtnResult.success {
-                    attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) DEBUG BUTTON REPLAY: \(debugBtnResult.detail)", level: .success))
-                    logger.log("DebugLoginButton replay SUCCESS for \(targetURLString)", category: .automation, level: .success, sessionId: sessionId)
-                    legacySubmitOK = true
-                } else if debugButtonService.hasSuccessfulMethod(for: targetURLString) {
-                    attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) debug button replay failed: \(debugBtnResult.detail)", level: .warning))
-                }
+                let targetStr = session.targetURL.absoluteString.lowercased()
+                let isJoeOrIgnition = targetStr.contains("joe") || targetStr.contains("ignition")
 
-                if !legacySubmitOK {
+                if isJoeOrIgnition {
+                    // FAST PATH: Hardcoded selector + triple click
+                    let sel = automationSettings.ignSubmitSelector
+                    let fastResult = await session.fastTripleClickSubmit(selector: sel)
+                    if fastResult.success {
+                        attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) Fast Triple Click: \(fastResult.detail)", level: .success))
+                        submitOK = true
+                    }
+                } else {
+                    // GEMINI PATH: Execute Calibration
                     let calClickResult = await session.clickLoginButtonCalibrated(calibration: calibration)
                     if calClickResult.success {
-                        attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) calibrated click: \(calClickResult.detail)", level: .info))
-                        legacySubmitOK = true
+                        attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) Calibrated Gemini click: \(calClickResult.detail)", level: .success))
+                        submitOK = true
+                    }
+                }
+                
+                // Allow debug button override if it was ever manually registered
+                if !submitOK {
+                    let debugBtnResult = await debugButtonService.replaySuccessfulMethod(session: session, url: targetURLString)
+                    if debugBtnResult.success {
+                        attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) DEBUG BUTTON REPLAY: \(debugBtnResult.detail)", level: .success))
+                        logger.log("DebugLoginButton replay SUCCESS for \(targetURLString)", category: .automation, level: .success, sessionId: sessionId)
+                        submitOK = true
+                    } else if debugButtonService.hasSuccessfulMethod(for: targetURLString) {
+                        attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) debug button replay failed: \(debugBtnResult.detail)", level: .warning))
                     }
                 }
 
-                if !legacySubmitOK {
-                    for submitAttempt in 1...4 {
-                        let clickResult = await session.clickLoginButton()
-                        if clickResult.success {
-                            attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) legacy click attempt \(submitAttempt): \(clickResult.detail)", level: .info))
-                            legacySubmitOK = true
-                            break
-                        }
-                        if submitAttempt < 4 {
-                            let retryReady = await session.waitForButtonReadyForNextAttempt(
-                                originalFingerprint: buttonFingerprint,
-                                host: pageHost,
-                                sessionId: sessionId,
-                                maxTimeoutMs: 15000
-                            )
-                            attempt.logs.append(PPSRLogEntry(message: "Legacy click retry \(submitAttempt): button \(retryReady.ready ? "ready" : "timeout") in \(retryReady.durationMs)ms", level: retryReady.ready ? .info : .warning))
-                        }
-                    }
-                }
-                if !legacySubmitOK {
-                    let ocrResult = await session.ocrClickLoginButton()
-                    if ocrResult.success {
-                        attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) OCR click: \(ocrResult.detail)", level: .info))
-                        legacySubmitOK = true
-                    }
-                }
-                if !legacySubmitOK {
-                    let visionResult = await visionClickLoginButton(session: session, sessionId: sessionId)
-                    if visionResult {
-                        attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) Vision ML click: found and clicked login button via screenshot OCR", level: .success))
-                        legacySubmitOK = true
-                    }
-                }
-                if !legacySubmitOK && cycle == 1 {
+                if !submitOK && cycle == 1 {
                     patternLearning.recordAttempt(url: targetURLString, pattern: selectedPattern, fillSuccess: patternResult.usernameFilled && patternResult.passwordFilled, submitSuccess: false, loginOutcome: "submit_failed", responseTimeMs: patternMs ?? 0, submitMethod: "pattern")
-                    failAttempt(attempt, message: "LOGIN SUBMIT FAILED after pattern + legacy attempts")
-                    await captureDebugScreenshot(session: session, attempt: attempt, step: "submit_failed", note: "All submit strategies failed", autoResult: .unknown)
+                    failAttempt(attempt, message: "LOGIN SUBMIT FAILED after pure strategy attempts")
+                    await captureDebugScreenshot(session: session, attempt: attempt, step: "submit_failed", note: "All pure submit strategies failed", autoResult: .unknown)
                     return (.connectionFailure, lastEvaluation, maxSubmitCycles)
                 }
-                if !legacySubmitOK {
+                if !submitOK {
                     patternLearning.recordAttempt(url: targetURLString, pattern: selectedPattern, fillSuccess: patternResult.usernameFilled && patternResult.passwordFilled, submitSuccess: false, loginOutcome: "submit_failed", responseTimeMs: patternMs ?? 0, submitMethod: "pattern")
                     attempt.logs.append(PPSRLogEntry(message: "Cycle \(cycle) all submit methods failed — skipping to next cycle", level: .warning))
                     continue
@@ -1779,7 +1832,14 @@ class LoginAutomationEngine {
         return await visionML.detectSuccessIndicators(in: screenshot)
     }
 
-    private func captureTerminalScreenshot(session: LoginSiteWebSession, attempt: LoginAttempt, step: String, note: String, autoResult: PPSRDebugScreenshot.AutoDetectedResult, terminalType: TrueDetectionService.TerminalError) async {
+    enum TerminalError {
+        case temporarilyDisabled
+        case accountDisabled
+        case errorBanner
+        case smsVerification
+    }
+
+    private func captureTerminalScreenshot(session: LoginSiteWebSession, attempt: LoginAttempt, step: String, note: String, autoResult: PPSRDebugScreenshot.AutoDetectedResult, terminalType: TerminalError) async {
         let terminalImage: UIImage?
         // CRIMSON SWEEP: errorBanner case now uses standard screenshot (DOM crop removed)
         if terminalType == .errorBanner {
@@ -1825,7 +1885,7 @@ class LoginAutomationEngine {
         logger.log("Terminal screenshot captured for \(step) — purged \(previousIds.count) previous screenshot(s)", category: .screenshot, level: .info)
     }
 
-    private func captureTerminalMessageCrop(session: LoginSiteWebSession, terminalType: TrueDetectionService.TerminalError) async -> UIImage? {
+    private func captureTerminalMessageCrop(session: LoginSiteWebSession, terminalType: TerminalError) async -> UIImage? {
         guard let fullScreenshot = await session.captureScreenshot() else { return nil }
         guard let webView = session.webView else { return fullScreenshot }
 

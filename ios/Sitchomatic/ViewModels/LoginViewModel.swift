@@ -781,7 +781,12 @@ class LoginViewModel {
 
         batchTask = Task {
             configureEngine()
-            let concurrencyLimit = effectiveMaxConcurrency
+            OmniConcurrencyGovernor.shared.start(
+                cap: effectiveMaxConcurrency,
+                strategy: automationSettings.concurrencyStrategy,
+                fixedPairs: automationSettings.fixedPairCount,
+                liveUserPairs: automationSettings.liveUserPairCount
+            )
             var activeTasks: [Task<Void, Never>] = []
 
             for cred in credsToTest {
@@ -809,7 +814,7 @@ class LoginViewModel {
                 guard !Task.isCancelled && !isStopping else { break }
 
                 activeTasks.removeAll { $0.isCancelled }
-                while activeTasks.count >= concurrencyLimit {
+                while activeTasks.count >= OmniConcurrencyGovernor.shared.livePairCount {
                     if let first = activeTasks.first {
                         _ = await first.value
                         activeTasks.removeFirst()
@@ -830,7 +835,17 @@ class LoginViewModel {
 
                 let task = Task {
                     defer { self.activeTestCount = max(0, self.activeTestCount - 1) }
+                    let startTime = Date()
                     let outcome = await engine.runLoginTest(attempt, targetURL: testURL, timeout: testTimeout)
+                    let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+                    
+                    OmniConcurrencyGovernor.shared.recordOutcome(
+                        conclusive: outcome != .timeout && outcome != .connectionFailure,
+                        timeout: outcome == .timeout,
+                        connectionFailure: outcome == .connectionFailure,
+                        latencyMs: latencyMs
+                    )
+                    
                     self.batchCompletedCount += 1
                     self.updateRecoveryForOutcome(outcome, credential: cred, attempt: attempt)
 
@@ -888,6 +903,7 @@ class LoginViewModel {
     private func finalizeBatch(working: Int, dead: Int, requeued: Int) {
         let result = BatchResult(working: working, dead: dead, requeued: requeued, total: working + dead + requeued)
         lastBatchResult = result
+        OmniConcurrencyGovernor.shared.stop()
         cancelPauseCountdown()
         stopHeartbeatMonitor()
         forceStopTask?.cancel()
@@ -1017,6 +1033,7 @@ class LoginViewModel {
         stopHeartbeatMonitor()
         forceStopTask?.cancel()
         forceStopTask = nil
+        OmniConcurrencyGovernor.shared.stop()
         persistence.clearTestQueue()
         recoveryService.endBatch()
         isRunning = false

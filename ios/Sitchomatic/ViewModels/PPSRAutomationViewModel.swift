@@ -728,6 +728,7 @@ class PPSRAutomationViewModel {
         stopHeartbeatMonitor()
         forceStopTask?.cancel()
         forceStopTask = nil
+        OmniConcurrencyGovernor.shared.stop()
         persistence.clearTestQueue()
         isRunning = false
         isPaused = false
@@ -924,6 +925,12 @@ class PPSRAutomationViewModel {
 
         batchTask = Task {
             configureEngine()
+            OmniConcurrencyGovernor.shared.start(
+                cap: maxConcurrency,
+                strategy: automationSettings.concurrencyStrategy,
+                fixedPairs: automationSettings.fixedPairCount,
+                liveUserPairs: automationSettings.liveUserPairCount
+            )
             var activeTasks: [Task<Void, Never>] = []
 
             for card in cardsToTest {
@@ -951,7 +958,7 @@ class PPSRAutomationViewModel {
                 guard !Task.isCancelled && !isStopping else { break }
 
                 activeTasks.removeAll { $0.isCancelled }
-                while activeTasks.count >= maxConcurrency {
+                while activeTasks.count >= OmniConcurrencyGovernor.shared.livePairCount {
                     if let first = activeTasks.first {
                         _ = await first.value
                         activeTasks.removeFirst()
@@ -976,7 +983,17 @@ class PPSRAutomationViewModel {
                             self.activeTestCount -= 1
                         }
                     }
+                    let startTime = Date()
                     let outcome = await engine.runCheck(check, timeout: testTimeout)
+                    let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+                    
+                    OmniConcurrencyGovernor.shared.recordOutcome(
+                        conclusive: outcome != .uncertain && outcome != .timeout && outcome != .connectionFailure,
+                        timeout: outcome == .timeout,
+                        connectionFailure: outcome == .connectionFailure,
+                        latencyMs: latencyMs
+                    )
+                    
                     self.batchCompletedCount += 1
                     self.handleOutcome(outcome, card: card, check: check, vin: vin)
                     switch outcome {
@@ -1025,6 +1042,12 @@ class PPSRAutomationViewModel {
 
         batchTask = Task {
             configureBPointEngineSettings()
+            OmniConcurrencyGovernor.shared.start(
+                cap: maxConcurrency,
+                strategy: .rorkAISmart, // BPoint is harder on memory
+                fixedPairs: maxConcurrency,
+                liveUserPairs: maxConcurrency
+            )
             var activeTasks: [Task<Void, Never>] = []
 
             for card in cardsToTest {
@@ -1051,7 +1074,7 @@ class PPSRAutomationViewModel {
                 guard !Task.isCancelled && !isStopping else { break }
 
                 activeTasks.removeAll { $0.isCancelled }
-                while activeTasks.count >= maxConcurrency {
+                while activeTasks.count >= OmniConcurrencyGovernor.shared.livePairCount {
                     if let first = activeTasks.first {
                         _ = await first.value
                         activeTasks.removeFirst()
@@ -1076,7 +1099,17 @@ class PPSRAutomationViewModel {
                             self.activeTestCount -= 1
                         }
                     }
+                    let startTime = Date()
                     let outcome = await bpointEngine.runCheck(check, chargeAmount: capturedAmount, timeout: testTimeout)
+                    let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+                    
+                    OmniConcurrencyGovernor.shared.recordOutcome(
+                        conclusive: outcome != .uncertain && outcome != .timeout && outcome != .connectionFailure,
+                        timeout: outcome == .timeout,
+                        connectionFailure: outcome == .connectionFailure,
+                        latencyMs: latencyMs
+                    )
+                    
                     self.batchCompletedCount += 1
                     self.handleOutcome(outcome, card: card, check: check, vin: "BPOINT_$\(String(format: "%.2f", capturedAmount))")
                     switch outcome {
@@ -1185,6 +1218,12 @@ class PPSRAutomationViewModel {
             } else {
                 configureEngine()
             }
+            OmniConcurrencyGovernor.shared.start(
+                cap: maxConcurrency,
+                strategy: automationSettings.concurrencyStrategy,
+                fixedPairs: automationSettings.fixedPairCount,
+                liveUserPairs: automationSettings.liveUserPairCount
+            )
             var activeTasks: [Task<Void, Never>] = []
 
             for card in cardsToTest {
@@ -1211,7 +1250,7 @@ class PPSRAutomationViewModel {
                 guard !Task.isCancelled && !isStopping else { break }
 
                 activeTasks.removeAll { $0.isCancelled }
-                while activeTasks.count >= maxConcurrency {
+                while activeTasks.count >= OmniConcurrencyGovernor.shared.livePairCount {
                     if let first = activeTasks.first {
                         _ = await first.value
                         activeTasks.removeFirst()
@@ -1233,7 +1272,14 @@ class PPSRAutomationViewModel {
                     let testTimeout = self.testTimeout
                     let task = Task {
                         defer { self.activeTestCount = max(0, self.activeTestCount - 1) }
+                        let startTime = Date()
                         let outcome = await bpointEngine.runCheck(check, chargeAmount: capturedAmount, timeout: testTimeout)
+                        let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+                        OmniConcurrencyGovernor.shared.recordOutcome(
+                            conclusive: outcome != .uncertain && outcome != .timeout && outcome != .connectionFailure,
+                            timeout: outcome == .timeout,
+                            connectionFailure: outcome == .connectionFailure, latencyMs: latencyMs
+                        )
                         self.batchCompletedCount += 1
                         self.handleOutcome(outcome, card: card, check: check, vin: "BPOINT_$\(String(format: "%.2f", capturedAmount))")
                         switch outcome {
@@ -1256,7 +1302,14 @@ class PPSRAutomationViewModel {
                     let testTimeout = self.testTimeout
                     let task = Task {
                         defer { self.activeTestCount = max(0, self.activeTestCount - 1) }
+                        let startTime = Date()
                         let outcome = await engine.runCheck(check, timeout: testTimeout)
+                        let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+                        OmniConcurrencyGovernor.shared.recordOutcome(
+                            conclusive: outcome != .uncertain && outcome != .timeout && outcome != .connectionFailure,
+                            timeout: outcome == .timeout,
+                            connectionFailure: outcome == .connectionFailure, latencyMs: latencyMs
+                        )
                         self.batchCompletedCount += 1
                         self.handleOutcome(outcome, card: card, check: check, vin: vin)
                         switch outcome {
@@ -1280,6 +1333,7 @@ class PPSRAutomationViewModel {
     private func finalizePPSRBatch(working: Int, dead: Int, requeued: Int) {
         let result = BatchResult(working: working, dead: dead, requeued: requeued, total: working + dead + requeued)
         lastBatchResult = result
+        OmniConcurrencyGovernor.shared.stop()
         cancelPauseCountdown()
         stopHeartbeatMonitor()
         forceStopTask?.cancel()
