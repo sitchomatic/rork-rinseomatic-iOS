@@ -156,7 +156,7 @@ class HumanInteractionEngine {
         if !result.usernameFilled { return result }
         try? await Task.sleep(for: .milliseconds(aiOptimizedDelay(category: .interFieldPause, fallbackMin: settings.interFieldDelayMs, fallbackMax: settings.interFieldDelayMs)))
 
-        _ = await verifyAndCleanPasswordField(username: username, passwordSelector: tdPassSel, executeJS: executeJS, sessionId: sessionId)
+        _ = await verifyAndCleanPasswordField(username: username, emailSelector: tdEmailSel, passwordSelector: tdPassSel, executeJS: executeJS, sessionId: sessionId)
 
         let passTapResult = await executeJS(JSInteractionBuilder.humanTapJS(selector: tdPassSel))
         logger.log("TrueDetection: human tap on \(tdPassSel) → \(passTapResult ?? "nil")", category: .automation, level: .trace, sessionId: sessionId)
@@ -241,8 +241,9 @@ class HumanInteractionEngine {
         logger.log("TabNav: inter-field delay \(d2)ms", category: .automation, level: .trace, sessionId: sessionId)
         try? await Task.sleep(for: .milliseconds(d2))
 
+        let emailSel = resolveSiteEmailSelector(sessionId: sessionId)
         let passSel = resolveSitePasswordSelector(sessionId: sessionId)
-        _ = await verifyAndCleanPasswordField(username: username, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
+        _ = await verifyAndCleanPasswordField(username: username, emailSelector: emailSel, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
 
         let tabResult = await executeJS(JSInteractionBuilder.tabToPasswordJS(url: currentHost))
         if tabResult == "CALIBRATED_PASSWORD_FALLBACK" || tabResult == "GENERIC_PASSWORD_FALLBACK" {
@@ -297,8 +298,9 @@ class HumanInteractionEngine {
         logger.log("ClickFocus: inter-field delay \(d2)ms", category: .automation, level: .trace, sessionId: sessionId)
         try? await Task.sleep(for: .milliseconds(d2))
 
+        let emailSel = resolveSiteEmailSelector(sessionId: sessionId)
         let passSel = resolveSitePasswordSelector(sessionId: sessionId)
-        _ = await verifyAndCleanPasswordField(username: username, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
+        _ = await verifyAndCleanPasswordField(username: username, emailSelector: emailSel, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
 
         let passClick = await executeJS(JSInteractionBuilder.blurAndMouseClickPasswordJS())
         logger.log("ClickFocus: password field click [input[type='password'], input#password] → \(passClick ?? "nil") +\(Int(Date().timeIntervalSince(t0)*1000))ms", category: .automation, level: .trace, sessionId: sessionId)
@@ -347,8 +349,9 @@ class HumanInteractionEngine {
         logger.log("ExecCmd: inter-field delay \(d2)ms", category: .automation, level: .trace, sessionId: sessionId)
         try? await Task.sleep(for: .milliseconds(d2))
 
-        let passSel3 = resolveSitePasswordSelector(sessionId: sessionId)
-        _ = await verifyAndCleanPasswordField(username: username, passwordSelector: passSel3, executeJS: executeJS, sessionId: sessionId)
+        let emailSel = resolveSiteEmailSelector(sessionId: sessionId)
+        let passSel = resolveSitePasswordSelector(sessionId: sessionId)
+        _ = await verifyAndCleanPasswordField(username: username, emailSelector: emailSel, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
 
         let passFocused = await executeJS(JSInteractionBuilder.blurAndFocusSelectPasswordJS())
         logger.log("ExecCmd: focus+select password [input[type='password'], input#password] → \(passFocused ?? "nil") +\(Int(Date().timeIntervalSince(t0)*1000))ms", category: .automation, level: passFocused == "NOT_FOUND" ? .error : .trace, sessionId: sessionId)
@@ -398,8 +401,9 @@ class HumanInteractionEngine {
         logger.log("SlowTyper: inter-field delay \(d2)ms", category: .automation, level: .trace, sessionId: sessionId)
         try? await Task.sleep(for: .milliseconds(d2))
 
-        let passSel4 = resolveSitePasswordSelector(sessionId: sessionId)
-        _ = await verifyAndCleanPasswordField(username: username, passwordSelector: passSel4, executeJS: executeJS, sessionId: sessionId)
+        let emailSel = resolveSiteEmailSelector(sessionId: sessionId)
+        let passSel = resolveSitePasswordSelector(sessionId: sessionId)
+        _ = await verifyAndCleanPasswordField(username: username, emailSelector: emailSel, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
 
         let pf = await executeJS(JSInteractionBuilder.blurAndFocusPasswordJS())
         logger.log("SlowTyper: blur+focus password [input[type='password']] → \(pf ?? "nil") +\(Int(Date().timeIntervalSince(t0)*1000))ms", category: .automation, level: pf == "NOT_FOUND" ? .error : .trace, sessionId: sessionId)
@@ -451,8 +455,9 @@ class HumanInteractionEngine {
         logger.log("TouchBurst: inter-field delay \(d2)ms", category: .automation, level: .trace, sessionId: sessionId)
         try? await Task.sleep(for: .milliseconds(d2))
 
-        let passSel5 = resolveSitePasswordSelector(sessionId: sessionId)
-        _ = await verifyAndCleanPasswordField(username: username, passwordSelector: passSel5, executeJS: executeJS, sessionId: sessionId)
+        let emailSel = resolveSiteEmailSelector(sessionId: sessionId)
+        let passSel = resolveSitePasswordSelector(sessionId: sessionId)
+        _ = await verifyAndCleanPasswordField(username: username, emailSelector: emailSel, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
 
         let touchPass = await executeJS(JSInteractionBuilder.touchFocusFieldJS(fieldSelector: "input[type=\"password\"]"))
         logger.log("TouchBurst: touch-focus password [input[type='password']] → \(touchPass ?? "nil") +\(Int(Date().timeIntervalSince(t0)*1000))ms", category: .automation, level: touchPass == "NOT_FOUND" ? .error : .trace, sessionId: sessionId)
@@ -504,8 +509,9 @@ class HumanInteractionEngine {
 
         try? await Task.sleep(for: .milliseconds(aiOptimizedDelay(category: .interFieldPause, fallbackMin: 200, fallbackMax: 500)))
 
-        let passSel6 = resolveSitePasswordSelector(sessionId: sessionId)
-        _ = await verifyAndCleanPasswordField(username: username, passwordSelector: passSel6, executeJS: executeJS, sessionId: sessionId)
+        let emailSel = resolveSiteEmailSelector(sessionId: sessionId)
+        let passSel = resolveSitePasswordSelector(sessionId: sessionId)
+        _ = await verifyAndCleanPasswordField(username: username, emailSelector: emailSel, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
 
         let passResult = await executeJS(JSInteractionBuilder.calibratedFillJS(calibration: cal, fieldType: "password", value: password))
         result.passwordFilled = passResult == "CAL_OK" || passResult == "CAL_MISMATCH" || passResult == "LEGACY_OK"
@@ -542,8 +548,9 @@ class HumanInteractionEngine {
 
         try? await Task.sleep(for: .milliseconds(aiOptimizedDelay(category: .interFieldPause, fallbackMin: 200, fallbackMax: 500)))
 
-        let passSel7 = resolveSitePasswordSelector(sessionId: sessionId)
-        _ = await verifyAndCleanPasswordField(username: username, passwordSelector: passSel7, executeJS: executeJS, sessionId: sessionId)
+        let emailSel = resolveSiteEmailSelector(sessionId: sessionId)
+        let passSel = resolveSitePasswordSelector(sessionId: sessionId)
+        _ = await verifyAndCleanPasswordField(username: username, emailSelector: emailSel, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
 
         let passFocused = await executeJS(JSInteractionBuilder.calibratedFocusJS(calibration: cal, fieldType: "password"))
         if passFocused == "NOT_FOUND" {
@@ -619,8 +626,9 @@ class HumanInteractionEngine {
 
         try? await Task.sleep(for: .milliseconds(aiOptimizedDelay(category: .interFieldPause, fallbackMin: 200, fallbackMax: 500)))
 
-        let passSel9 = resolveSitePasswordSelector(sessionId: sessionId)
-        _ = await verifyAndCleanPasswordField(username: username, passwordSelector: passSel9, executeJS: executeJS, sessionId: sessionId)
+        let emailSel = resolveSiteEmailSelector(sessionId: sessionId)
+        let passSel = resolveSitePasswordSelector(sessionId: sessionId)
+        _ = await verifyAndCleanPasswordField(username: username, emailSelector: emailSel, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
 
         if let passCoords = cal?.passwordField?.coordinates {
             let f = await executeJS(JSInteractionBuilder.coordinateClickJS(x: Int(passCoords.x), y: Int(passCoords.y)))
@@ -754,8 +762,9 @@ class HumanInteractionEngine {
         // Human inter-field pause with variance
         try? await Task.sleep(for: .milliseconds(aiOptimizedDelay(category: .interFieldPause, fallbackMin: 300, fallbackMax: 700)))
 
-        let passSel11 = resolveSitePasswordSelector(sessionId: sessionId)
-        _ = await verifyAndCleanPasswordField(username: username, passwordSelector: passSel11, executeJS: executeJS, sessionId: sessionId)
+        let emailSel = resolveSiteEmailSelector(sessionId: sessionId)
+        let passSel = resolveSitePasswordSelector(sessionId: sessionId)
+        _ = await verifyAndCleanPasswordField(username: username, emailSelector: emailSel, passwordSelector: passSel, executeJS: executeJS, sessionId: sessionId)
 
         // Step 4: OCR Vision ML — detect password field by pixel coordinate with variance
         let passClickJS = buildOCRVarianceClickJS(
@@ -932,14 +941,14 @@ class HumanInteractionEngine {
         return fallback != "FAILED" && fallback != nil
     }
 
-    private func resolveSitePasswordSelector(sessionId: String) -> String {
+    private func resolveSiteEmailSelector(sessionId: String) -> String {
         let settings = AutomationSettingsPersistence.shared.load()
         let isJoeSite = currentHost.lowercased().contains("joe") || sessionId.lowercased().contains("joe")
         let site: LoginTargetSite = isJoeSite ? .joefortune : .ignition
-        return settings.passwordSelector(for: site)
+        return settings.emailSelector(for: site)
     }
 
-    private func verifyAndCleanPasswordField(username: String, passwordSelector: String, executeJS: @escaping (String) async -> String?, sessionId: String) async -> Bool {
+    private func verifyAndCleanPasswordField(username: String, emailSelector: String, passwordSelector: String, executeJS: @escaping (String) async -> String?, sessionId: String) async -> Bool {
         let currentValue = await executeJS(JSInteractionBuilder.readFieldValueJS(selector: passwordSelector))
         var contaminated = false
         if let val = currentValue, !val.isEmpty, val.contains(username) {
@@ -948,8 +957,8 @@ class HumanInteractionEngine {
             contaminated = true
         }
 
-        // Dispatch blur on email (current active element)
-        _ = await executeJS("if(document.activeElement) { document.activeElement.blur(); document.activeElement.dispatchEvent(new Event('blur', {bubbles:true})); }")
+        // Dispatch explicit blur on email field
+        _ = await executeJS(JSInteractionBuilder.blurFieldJS(selector: emailSelector))
 
         // Dispatch focus + click on password field
         _ = await executeJS("""

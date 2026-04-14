@@ -1429,39 +1429,50 @@ class LoginAutomationEngine {
         if hostLower.contains("joe") || hostLower.contains("ignition") {
             if provisionalOutcome == .success || provisionalOutcome == nil {
                 if let host = URL(string: currentURL)?.host {
-                    let accountURL = "https://www.\(host)/account"
-                    logger.log("URL Verification: navigating to \(accountURL) to confirm success", category: .automation, level: .info)
+                    var components = URLComponents()
+                    components.scheme = "https"
+                    let hLower = host.lowercased()
+                    components.host = hLower.hasPrefix("www.") ? hLower : "www.\(hLower)"
+                    components.path = "/account"
+                    
+                    if let accountURL = components.url?.absoluteString {
+                        logger.log("URL Verification: navigating to \(accountURL) to confirm success", category: .automation, level: .info)
 
-                    _ = await session.webView?.load(URLRequest(url: URL(string: accountURL)!))
+                        _ = await session.webView?.load(URLRequest(url: URL(string: accountURL)!))
 
-                    var verifiedSuccess = false
-                    for _ in 0..<20 { // 10 seconds, 500ms intervals
-                        try? await Task.sleep(for: .milliseconds(500))
-                        let finalURL = await session.getCurrentURL().lowercased()
-                        if finalURL.contains("/account") && !finalURL.contains("login") {
-                            verifiedSuccess = true
-                            break
+                        var verifiedSuccess = false
+                        var lastObservedURL = currentURL.lowercased()
+                        
+                        for _ in 0..<20 { // 10 seconds, 500ms intervals
+                            try? await Task.sleep(for: .milliseconds(500))
+                            lastObservedURL = await session.getCurrentURL().lowercased()
+                            if lastObservedURL.contains("/account") && !lastObservedURL.contains("login") {
+                                verifiedSuccess = true
+                                break
+                            }
+                            if lastObservedURL.contains("login") {
+                                verifiedSuccess = false
+                                break
+                            }
                         }
-                        if finalURL.contains("login") {
-                            verifiedSuccess = false
-                            break
-                        }
-                    }
 
-                    if verifiedSuccess {
-                        return EvaluationResult(
-                            outcome: .success,
-                            score: 200,
-                            reason: provisionalOutcome == .success ? reason : "SUCCESS — URL verification confirmed /account access",
-                            signals: signals + ["URL: /account verified"]
-                        )
-                    } else {
-                        return EvaluationResult(
-                            outcome: .noAcc,
-                            score: 50,
-                            reason: "NO_ACC — URL verification failed: /account redirected to login",
-                            signals: signals + ["URL: /account redirected to login"]
-                        )
+                        if verifiedSuccess {
+                            return EvaluationResult(
+                                outcome: .success,
+                                score: 200,
+                                reason: provisionalOutcome == .success ? reason : "SUCCESS — URL verification confirmed /account access",
+                                signals: signals + ["URL: /account verified"]
+                            )
+                        } else if lastObservedURL.contains("login") {
+                            return EvaluationResult(
+                                outcome: .noAcc,
+                                score: 50,
+                                reason: "NO_ACC — URL verification failed: /account redirected to login",
+                                signals: signals + ["URL: /account redirected to login"]
+                            )
+                        } else {
+                            logger.log("URL Verification: timeout or unexpected destination (\(lastObservedURL)) — preserving provisional state", category: .automation, level: .warning)
+                        }
                     }
                 }
             }
