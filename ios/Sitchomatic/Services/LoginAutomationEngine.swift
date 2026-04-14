@@ -898,14 +898,15 @@ class LoginAutomationEngine {
             attempt.detectedURL = currentURL
             attempt.responseSnippet = String(pageContent.prefix(500))
 
-            let evaluation = evaluateLoginResponse(
+            let evaluation = await evaluateLoginResponse(
                 pageContent: pageContent,
                 currentURL: currentURL,
                 preLoginURL: preLoginURL,
                 pageTitle: await session.getPageTitle(),
                 redirectedToHomepage: pollResult.redirectedToHomepage,
                 navigationDetected: pollResult.navigationDetected,
-                contentChanged: pollResult.navigationDetected
+                contentChanged: pollResult.navigationDetected,
+                session: session
             )
 
             lastEvaluation = evaluation
@@ -1005,6 +1006,42 @@ class LoginAutomationEngine {
                         attempt.logs.append(PPSRLogEntry(message: "Calibrated password fill: \(calPassResult.detail)", level: calPassResult.success ? .info : .warning))
                         try? await Task.sleep(for: .milliseconds(automationSettings.postTypingDelayMs))
                     }
+                }
+            }
+
+            // --- Cross-Contamination Guard ---
+            let fieldValuesCheck = await session.getFieldValues()
+            let contaminated = (!attempt.credential.password.isEmpty && fieldValuesCheck.email.contains(attempt.credential.password)) ||
+                               (!attempt.credential.username.isEmpty && fieldValuesCheck.password.contains(attempt.credential.username))
+
+            if contaminated {
+                logger.log("CROSS-CONTAMINATION: email field contains password text or password field contains email text — clearing and re-filling", category: .automation, level: .warning, sessionId: sessionId)
+                attempt.logs.append(PPSRLogEntry(message: "CROSS-CONTAMINATION: fields contaminated — clearing and re-filling", level: .warning))
+
+                await session.clearAllInputFields()
+                try? await Task.sleep(for: .milliseconds(automationSettings.preTypingDelayMs))
+
+                let isJoeSite = session.targetURL.absoluteString.lowercased().contains("joe")
+                let siteTarget: LoginTargetSite = isJoeSite ? .joefortune : .ignition
+                let emailSel = automationSettings.emailSelector(for: siteTarget)
+                let passSel = automationSettings.passwordSelector(for: siteTarget)
+
+                _ = await session.webView?.evaluateJavaScript(JSInteractionBuilder.humanTapJS(selector: emailSel))
+                try? await Task.sleep(for: .milliseconds(automationSettings.preTypingDelayMs))
+                _ = await session.webView?.evaluateJavaScript(JSInteractionBuilder.nativeSetterFillJS(selector: emailSel, value: attempt.credential.username))
+
+                try? await Task.sleep(for: .milliseconds(automationSettings.interFieldDelayMs))
+                _ = await session.webView?.evaluateJavaScript(JSInteractionBuilder.blurFieldJS(selector: emailSel))
+                try? await Task.sleep(for: .milliseconds(50))
+
+                _ = await session.webView?.evaluateJavaScript(JSInteractionBuilder.humanTapJS(selector: passSel))
+                try? await Task.sleep(for: .milliseconds(automationSettings.preTypingDelayMs))
+                _ = await session.webView?.evaluateJavaScript(JSInteractionBuilder.nativeSetterFillJS(selector: passSel, value: attempt.credential.password))
+
+                let reVerifyValues = await session.getFieldValues()
+                if (!attempt.credential.password.isEmpty && reVerifyValues.email.contains(attempt.credential.password)) ||
+                   (!attempt.credential.username.isEmpty && reVerifyValues.password.contains(attempt.credential.username)) {
+                    logger.log("CROSS-CONTAMINATION: Re-verify still contaminated after manual re-fill", category: .automation, level: .error, sessionId: sessionId)
                 }
             }
 
@@ -1209,14 +1246,15 @@ class LoginAutomationEngine {
             }
 
             logger.startTimer(key: "\(sessionId)_eval_\(cycle)")
-            let evaluation = evaluateLoginResponse(
+            let evaluation = await evaluateLoginResponse(
                 pageContent: pageContent,
                 currentURL: currentURL,
                 preLoginURL: preLoginURL,
                 pageTitle: await session.getPageTitle(),
                 redirectedToHomepage: pollResult.redirectedToHomepage,
                 navigationDetected: pollResult.navigationDetected,
-                contentChanged: pollResult.navigationDetected
+                contentChanged: pollResult.navigationDetected,
+                session: session
             )
             let _ = logger.stopTimer(key: "\(sessionId)_eval_\(cycle)")
             lastEvaluation = evaluation
@@ -1345,8 +1383,9 @@ class LoginAutomationEngine {
         pageTitle: String,
         redirectedToHomepage: Bool,
         navigationDetected: Bool,
-        contentChanged: Bool
-    ) -> EvaluationResult {
+        contentChanged: Bool,
+        session: LoginSiteWebSession
+    ) async -> EvaluationResult {
         let contentLower = pageContent.lowercased()
 
         if contentLower.contains("has been disabled") {
@@ -1367,23 +1406,69 @@ class LoginAutomationEngine {
             )
         }
 
+        var provisionalOutcome: LoginOutcome? = nil
+        var reason = ""
+        var signals: [String] = []
+
         if contentLower.contains("recommended for you") || contentLower.contains("last played") {
             let marker = contentLower.contains("recommended for you") ? "RECOMMENDED FOR YOU" : "LAST PLAYED"
-            return EvaluationResult(
-                outcome: .success,
-                score: 200,
-                reason: "SUCCESS — '\(marker)' lobby marker in DOM",
-                signals: ["P1: '\(marker)'"]
-            )
-        }
-
-        if contentLower.contains("incorrect") {
+            provisionalOutcome = .success
+            reason = "SUCCESS — '\(marker)' lobby marker in DOM"
+            signals = ["P1: '\(marker)'"]
+        } else if contentLower.contains("incorrect") {
             return EvaluationResult(
                 outcome: .noAcc,
                 score: 100,
                 reason: "NO_ACC — 'incorrect' found in DOM",
                 signals: ["P3: 'incorrect' in DOM"]
             )
+        }
+
+        // URL-based verification for Joe/Ignition sites
+        let hostLower = currentURL.lowercased()
+        if hostLower.contains("joe") || hostLower.contains("ignition") {
+            if provisionalOutcome == .success || provisionalOutcome == nil {
+                if let host = URL(string: currentURL)?.host {
+                    let accountURL = "https://www.\(host)/account"
+                    logger.log("URL Verification: navigating to \(accountURL) to confirm success", category: .automation, level: .info)
+
+                    _ = await session.webView?.load(URLRequest(url: URL(string: accountURL)!))
+
+                    var verifiedSuccess = false
+                    for _ in 0..<20 { // 10 seconds, 500ms intervals
+                        try? await Task.sleep(for: .milliseconds(500))
+                        let finalURL = await session.getCurrentURL().lowercased()
+                        if finalURL.contains("/account") && !finalURL.contains("login") {
+                            verifiedSuccess = true
+                            break
+                        }
+                        if finalURL.contains("login") {
+                            verifiedSuccess = false
+                            break
+                        }
+                    }
+
+                    if verifiedSuccess {
+                        return EvaluationResult(
+                            outcome: .success,
+                            score: 200,
+                            reason: provisionalOutcome == .success ? reason : "SUCCESS — URL verification confirmed /account access",
+                            signals: signals + ["URL: /account verified"]
+                        )
+                    } else {
+                        return EvaluationResult(
+                            outcome: .noAcc,
+                            score: 50,
+                            reason: "NO_ACC — URL verification failed: /account redirected to login",
+                            signals: signals + ["URL: /account redirected to login"]
+                        )
+                    }
+                }
+            }
+        }
+
+        if let outcome = provisionalOutcome {
+            return EvaluationResult(outcome: outcome, score: 200, reason: reason, signals: signals)
         }
 
         let snippet = String(pageContent.prefix(150)).replacingOccurrences(of: "\n", with: " ")

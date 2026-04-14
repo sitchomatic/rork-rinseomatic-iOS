@@ -68,6 +68,42 @@ struct JSInteractionBuilder {
         """
     }
 
+    static func readFieldValueJS(selector: String) -> String {
+        """
+        (function() {
+            var el = document.querySelector('\(selector)');
+            return el ? el.value : '';
+        })();
+        """
+    }
+
+    static func clearFieldJS(selector: String) -> String {
+        """
+        (function() {
+            var el = document.querySelector('\(selector)');
+            if (!el) return 'NOT_FOUND';
+            var ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+            if (ns && ns.set) { ns.set.call(el, ''); } else { el.value = ''; }
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+            return 'CLEARED';
+        })();
+        """
+    }
+
+    static func blurFieldJS(selector: String) -> String {
+        """
+        (function() {
+            var el = document.querySelector('\(selector)');
+            if (!el) return 'NOT_FOUND';
+            el.blur();
+            el.dispatchEvent(new Event('blur', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+            return 'BLURRED';
+        })();
+        """
+    }
+
     static func cycledSubmitClickJS(selector: String, clickIndex: Int) -> String {
         """
         (function() {

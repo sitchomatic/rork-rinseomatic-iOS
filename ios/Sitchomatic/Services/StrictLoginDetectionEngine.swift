@@ -514,8 +514,8 @@ class StrictLoginDetectionEngine {
     nonisolated static func categorizeByIncorrectCount(_ completedIncorrectCycles: Int) -> LoginOutcome {
         switch completedIncorrectCycles {
         case 0: return .noAcc
-        case 1, 2: return .noAcc
-        case 3...: return .noAcc
+        case 1, 2, 3: return .noAcc
+        case 4...: return .noAcc
         default: return .noAcc
         }
     }
@@ -525,17 +525,18 @@ class StrictLoginDetectionEngine {
         case 0: return "unchecked"
         case 1: return "1incorrect"
         case 2: return "2incorrect"
-        case 3...: return "noAcc_final"
+        case 3: return "3incorrect"
+        case 4...: return "noAcc_final"
         default: return "unknown"
         }
     }
 
     nonisolated static func shouldRequeue(_ completedIncorrectCycles: Int) -> Bool {
-        completedIncorrectCycles > 0 && completedIncorrectCycles < 3
+        completedIncorrectCycles > 0 && completedIncorrectCycles < 4
     }
 
     nonisolated static func isFinalNoAccount(_ completedIncorrectCycles: Int) -> Bool {
-        completedIncorrectCycles >= 3
+        completedIncorrectCycles >= 4
     }
 
     // MARK: - Private Helpers
