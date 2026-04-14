@@ -16,11 +16,18 @@ final class TripleClickEngine {
 
     private var click1To2DelayMs: Int = 50
     private var click2To3DelayMs: Int = 50
+    private var settingsObserver: NSObjectProtocol?
 
     private init() {
         loadSettings()
-        NotificationCenter.default.addObserver(forName: .automationSettingsDidChange, object: nil, queue: .main) { [weak self] _ in
+        settingsObserver = NotificationCenter.default.addObserver(forName: .automationSettingsDidChange, object: nil, queue: .main) { [weak self] _ in
             self?.loadSettings()
+        }
+    }
+
+    deinit {
+        if let observer = settingsObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
