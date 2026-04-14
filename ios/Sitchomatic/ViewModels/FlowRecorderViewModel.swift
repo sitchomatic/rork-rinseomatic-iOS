@@ -438,6 +438,10 @@ class FlowRecorderViewModel {
         let remaining = Int(seconds) % 60
         return "\(minutes)m \(remaining)s"
     }
+
+    func assignedMode(for flow: RecordedFlow) -> FlowScriptMode? {
+        FlowScriptAssignmentService.shared.assignedMode(for: flow.id)
+    }
 }
 
 nonisolated enum ActionAutomationMethod: String, Codable, Sendable, CaseIterable {

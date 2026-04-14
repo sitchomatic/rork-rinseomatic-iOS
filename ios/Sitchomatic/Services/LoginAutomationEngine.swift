@@ -849,6 +849,65 @@ class LoginAutomationEngine {
             .compactMap { name in LoginFormPattern(rawValue: name) }
             .filter { enabledSet.contains($0.rawValue) }
 
+        // --- Flow Script Check ---
+        let scriptMode: FlowScriptMode? = {
+            switch proxyTarget {
+            case .joe: return .joe
+            case .ignition: return .ignition
+            default: return nil
+            }
+        }()
+
+        if let scriptMode,
+           let flow = FlowScriptAssignmentService.shared.assignedFlow(for: scriptMode, in: FlowPersistenceService.shared.loadFlows()) {
+            logger.log("FlowScript: using assigned flow '\(flow.name)' (\(flow.id)) for \(scriptMode.rawValue)", category: .automation, level: .info, sessionId: sessionId)
+            attempt.logs.append(PPSRLogEntry(message: "Using assigned Flow Script: \(flow.name)", level: .info))
+
+            let textboxValues: [String: String] = [
+                FlowPlaceholderToken.userEmail.templateKey: attempt.credential.username,
+                FlowPlaceholderToken.userPassword.templateKey: attempt.credential.password
+            ]
+
+            // Capture baseline URL BEFORE playback to ensure navigation/redirect detection works
+            let preSubmitURL = await session.getCurrentURL()
+
+            await FlowPlaybackEngine.shared.playFlow(
+                flow,
+                in: session.webView!,
+                textboxValues: textboxValues,
+                onProgress: { _, _ in },
+                onComplete: { _ in }
+            )
+
+            // After playback, skip directly to rapidResponsePoll and evaluation
+            let responseTimeout = TimeoutResolver.resolveAutomationTimeout(max(automationSettings.waitForResponseSeconds, 25))
+            let pollResult = await session.rapidResponsePoll(timeout: responseTimeout, originalURL: preSubmitURL)
+
+            var pageContent = pollResult.finalPageContent
+            if pageContent.isEmpty {
+                pageContent = await session.getPageContent() ?? ""
+            }
+            var currentURL = pollResult.finalURL
+            if currentURL.isEmpty {
+                currentURL = await session.getCurrentURL()
+            }
+            attempt.detectedURL = currentURL
+            attempt.responseSnippet = String(pageContent.prefix(500))
+
+            let evaluation = evaluateLoginResponse(
+                pageContent: pageContent,
+                currentURL: currentURL,
+                preLoginURL: preLoginURL,
+                pageTitle: await session.getPageTitle(),
+                redirectedToHomepage: pollResult.redirectedToHomepage,
+                navigationDetected: pollResult.navigationDetected,
+                contentChanged: pollResult.navigationDetected
+            )
+
+            lastEvaluation = evaluation
+            return (evaluation.outcome, evaluation, maxSubmitCycles)
+        }
+
         for cycle in 1...maxSubmitCycles {
             logger.log("Phase: HUMAN PATTERN CYCLE \(cycle)/\(maxSubmitCycles)", category: .automation, level: .info, sessionId: sessionId)
             logger.startTimer(key: "\(sessionId)_cycle_\(cycle)")

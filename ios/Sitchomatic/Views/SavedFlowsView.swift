@@ -9,6 +9,8 @@ struct SavedFlowsView: View {
     @State private var showExportShare: Bool = false
     @State private var editingFlow: RecordedFlow?
     @State private var historyFlow: RecordedFlow?
+    @State private var applyTargetFlow: RecordedFlow?
+    @ObservedObject private var assignmentService = FlowScriptAssignmentService.shared
 
     var body: some View {
         Group {
@@ -98,6 +100,20 @@ struct SavedFlowsView: View {
                 flowMetadataRow(metadata)
             }
 
+            if let assignedMode = assignmentService.assignedMode(for: flow.id) {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 10))
+                    Text("Applied to \(assignedMode.displayName)")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(.cyan)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.cyan.opacity(0.1))
+                .clipShape(Capsule())
+            }
+
             if !flow.textboxMappings.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "textformat.abc")
@@ -115,6 +131,23 @@ struct SavedFlowsView: View {
             }
 
             HStack(spacing: 8) {
+                Button {
+                    applyTargetFlow = flow
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 10))
+                        Text("Apply")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(.cyan)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
                 Button {
                     vm.selectFlowForPlayback(flow)
                 } label: {
@@ -256,6 +289,12 @@ struct SavedFlowsView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationContentInteraction(.scrolls)
+        }
+        .sheet(item: $applyTargetFlow) { flow in
+            FlowScriptModePickerSheet(flow: flow) {
+                applyTargetFlow = nil
+            }
+            .presentationDetents([.medium])
         }
     }
 

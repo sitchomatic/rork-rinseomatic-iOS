@@ -133,7 +133,8 @@ struct FlowRecorderWebView: UIViewRepresentable {
                 }
                 var parentLabel = el.closest('label');
                 if (parentLabel && parentLabel.innerText) return parentLabel.innerText.trim();
-                if (el.getAttribute('aria-label')) return el.getAttribute('aria-label').trim();
+                var ariaLabel = el.getAttribute('aria-label');
+                if (ariaLabel) return ariaLabel.trim();
                 return '';
             }
 

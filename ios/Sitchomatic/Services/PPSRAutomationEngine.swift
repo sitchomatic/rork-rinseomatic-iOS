@@ -318,52 +318,79 @@ class PPSRAutomationEngine: PPSRCheckAutomationEngine {
         guard emailResult else { return .connectionFailure }
         await speedDelay(milliseconds: 300)
 
-        logger.log("Phase: FILL PAYMENT", category: .automation, level: .info, sessionId: sessionId)
-        advanceTo(.enteringPayment, check: check, message: "Filling card: \(check.card.brand) \(check.card.displayNumber)")
-        let cardResult = await retryFill(session: session, check: check, fieldName: "Card Number") {
-            await session.fillCardNumber(check.card.number)
-        }
-        guard cardResult else { return .connectionFailure }
-        await speedDelay(milliseconds: 200)
+        var scriptPlayed = false
+        if let flow = FlowScriptAssignmentService.shared.assignedFlow(for: .ppsr, in: FlowPersistenceService.shared.loadFlows()) {
+            if let webView = session.webView {
+                logger.log("FlowScript: using assigned flow '\(flow.name)' (\(flow.id)) for PPSR", category: .automation, level: .info, sessionId: sessionId)
+                check.logs.append(PPSRLogEntry(message: "Using assigned Flow Script: \(flow.name)", level: .info))
 
-        let monthResult = await retryFill(session: session, check: check, fieldName: "Exp Month") {
-            await session.fillExpMonth(check.expiryMonth)
-        }
-        guard monthResult else { return .connectionFailure }
+                let textboxValues: [String: String] = [
+                    FlowPlaceholderToken.userEmail.templateKey: check.email,
+                    FlowPlaceholderToken.cardNumber.templateKey: check.card.number,
+                    FlowPlaceholderToken.expMonth.templateKey: check.card.expiryMonth,
+                    FlowPlaceholderToken.expYear.templateKey: check.card.expiryYear,
+                    FlowPlaceholderToken.cvv.templateKey: check.card.cvv
+                ]
 
-        let yearResult = await retryFill(session: session, check: check, fieldName: "Exp Year") {
-            await session.fillExpYear(check.expiryYear)
-        }
-        guard yearResult else { return .connectionFailure }
-
-        let cvvResult = await retryFill(session: session, check: check, fieldName: "CVV") {
-            await session.fillCVV(check.cvv)
-        }
-        guard cvvResult else { return .connectionFailure }
-        await speedDelay(milliseconds: 500)
-
-        logger.log("Phase: SUBMIT", category: .automation, level: .info, sessionId: sessionId)
-        advanceTo(.processingPayment, check: check, message: "Clicking 'Show My Results' button")
-        var submitResult: (success: Bool, detail: String) = (false, "")
-        for attempt in 1...3 {
-            logger.startTimer(key: "\(sessionId)_submit_\(attempt)")
-            submitResult = await session.clickShowMyResults()
-            let submitMs = logger.stopTimer(key: "\(sessionId)_submit_\(attempt)")
-            if submitResult.success {
-                check.logs.append(PPSRLogEntry(message: "Submit: \(submitResult.detail)", level: .success))
-                logger.log("Submit attempt \(attempt): SUCCESS — \(submitResult.detail)", category: .automation, level: .success, sessionId: sessionId, durationMs: submitMs)
-                break
-            }
-            check.logs.append(PPSRLogEntry(message: "Submit attempt \(attempt)/3 failed: \(submitResult.detail)", level: .warning))
-            logger.log("Submit attempt \(attempt)/3 FAILED: \(submitResult.detail)", category: .automation, level: .warning, sessionId: sessionId, durationMs: submitMs)
-            if attempt < 3 {
-                await speedDelay(seconds: Double(attempt))
+                await FlowPlaybackEngine.shared.playFlow(
+                    flow,
+                    in: webView,
+                    textboxValues: textboxValues,
+                    onProgress: { _, _ in },
+                    onComplete: { _ in }
+                )
+                scriptPlayed = true
             }
         }
-        guard submitResult.success else {
-            failCheck(check, message: "SUBMIT FAILED after 3 attempts: \(submitResult.detail)")
-            await captureScreenshotForCheck(session: session, check: check, step: "submit_failed", note: "Submit failed", autoResult: .unknown)
-            return .connectionFailure
+
+        if !scriptPlayed {
+            logger.log("Phase: FILL PAYMENT", category: .automation, level: .info, sessionId: sessionId)
+            advanceTo(.enteringPayment, check: check, message: "Filling card: \(check.card.brand) \(check.card.displayNumber)")
+            let cardResult = await retryFill(session: session, check: check, fieldName: "Card Number") {
+                await session.fillCardNumber(check.card.number)
+            }
+            guard cardResult else { return .connectionFailure }
+            await speedDelay(milliseconds: 200)
+
+            let monthResult = await retryFill(session: session, check: check, fieldName: "Exp Month") {
+                await session.fillExpMonth(check.expiryMonth)
+            }
+            guard monthResult else { return .connectionFailure }
+
+            let yearResult = await retryFill(session: session, check: check, fieldName: "Exp Year") {
+                await session.fillExpYear(check.expiryYear)
+            }
+            guard yearResult else { return .connectionFailure }
+
+            let cvvResult = await retryFill(session: session, check: check, fieldName: "CVV") {
+                await session.fillCVV(check.cvv)
+            }
+            guard cvvResult else { return .connectionFailure }
+            await speedDelay(milliseconds: 500)
+
+            logger.log("Phase: SUBMIT", category: .automation, level: .info, sessionId: sessionId)
+            advanceTo(.processingPayment, check: check, message: "Clicking 'Show My Results' button")
+            var submitResult: (success: Bool, detail: String) = (false, "")
+            for attempt in 1...3 {
+                logger.startTimer(key: "\(sessionId)_submit_\(attempt)")
+                submitResult = await session.clickShowMyResults()
+                let submitMs = logger.stopTimer(key: "\(sessionId)_submit_\(attempt)")
+                if submitResult.success {
+                    check.logs.append(PPSRLogEntry(message: "Submit: \(submitResult.detail)", level: .success))
+                    logger.log("Submit attempt \(attempt): SUCCESS — \(submitResult.detail)", category: .automation, level: .success, sessionId: sessionId, durationMs: submitMs)
+                    break
+                }
+                check.logs.append(PPSRLogEntry(message: "Submit attempt \(attempt)/3 failed: \(submitResult.detail)", level: .warning))
+                logger.log("Submit attempt \(attempt)/3 FAILED: \(submitResult.detail)", category: .automation, level: .warning, sessionId: sessionId, durationMs: submitMs)
+                if attempt < 3 {
+                    await speedDelay(seconds: Double(attempt))
+                }
+            }
+            guard submitResult.success else {
+                failCheck(check, message: "SUBMIT FAILED after 3 attempts: \(submitResult.detail)")
+                await captureScreenshotForCheck(session: session, check: check, step: "submit_failed", note: "Submit failed", autoResult: .unknown)
+                return .connectionFailure
+            }
         }
 
         let preSubmitURL = session.webView?.url?.absoluteString ?? ""

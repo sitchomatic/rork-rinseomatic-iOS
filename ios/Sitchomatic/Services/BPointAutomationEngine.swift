@@ -284,67 +284,118 @@ class BPointAutomationEngine: PPSRCheckAutomationEngine {
 
     private func performCardEntryAndSubmit(session: BPointWebSession, check: PPSRCheck, sessionId: String, deadline: Date) async -> CheckOutcome {
         logger.log("Phase: FILL PAYMENT DETAILS", category: .automation, level: .info, sessionId: sessionId)
-        advanceTo(.enteringPayment, check: check, message: "Filling card: \(check.card.brand) \(check.card.displayNumber)")
 
-        guard !isTimedOut(deadline) else { return .timeout }
-        let cardResult = await retryFill(session: session, check: check, fieldName: "Card Number") {
-            await session.fillCardNumber(check.card.number)
-        }
-        guard cardResult else {
-            await captureScreenshotForCheck(session: session, check: check, step: "card_fill_failed", note: "Card fill failed", autoResult: .unknown)
-            return .connectionFailure
-        }
-        await speedDelay(milliseconds: 300)
+        let baselineURL = session.webView?.url?.absoluteString ?? ""
+        var scriptPlayed = false
+        if let flow = FlowScriptAssignmentService.shared.assignedFlow(for: .bpoint, in: FlowPersistenceService.shared.loadFlows()) {
+            if let webView = session.webView {
+                logger.log("FlowScript: using assigned flow '\(flow.name)' (\(flow.id)) for BPoint", category: .automation, level: .info, sessionId: sessionId)
+                check.logs.append(PPSRLogEntry(message: "Using assigned Flow Script: \(flow.name)", level: .info))
 
-        let expiryStr = "\(check.expiryMonth)/\(check.expiryYear)"
-        let expiryResult = await session.fillExpiry(expiryStr)
-        if expiryResult.success {
-            check.logs.append(PPSRLogEntry(message: "Expiry filled as combined: \(expiryStr)", level: .success))
+                let textboxValues: [String: String] = [
+                    FlowPlaceholderToken.cardNumber.templateKey: check.card.number,
+                    FlowPlaceholderToken.expMonth.templateKey: check.card.expiryMonth,
+                    FlowPlaceholderToken.expYear.templateKey: check.card.expiryYear,
+                    FlowPlaceholderToken.cvv.templateKey: check.card.cvv
+                ]
+
+                await FlowPlaybackEngine.shared.playFlow(
+                    flow,
+                    in: webView,
+                    textboxValues: textboxValues,
+                    onProgress: { _, _ in },
+                    onComplete: { _ in }
+                )
+                scriptPlayed = true
+            }
+        }
+
+        var shouldRunNativeSubmit = !scriptPlayed
+        
+        if scriptPlayed {
+            logger.log("FlowScript: playback completed — monitoring for submission signs (5s window)", category: .automation, level: .info, sessionId: sessionId)
+            let navigated = await waitForBPointNavigation(session: session, timeout: 5)
+            let currentURL = session.webView?.url?.absoluteString ?? ""
+            
+            if navigated || currentURL != baselineURL {
+                logger.log("FlowScript: submission detected via navigation/URL change — skipping native submit", category: .automation, level: .success, sessionId: sessionId)
+                check.logs.append(PPSRLogEntry(message: "FlowScript submitted successfully via playback", level: .success))
+                shouldRunNativeSubmit = false
+            } else {
+                logger.log("FlowScript: no submission detected after playback — falling back to native submit", category: .automation, level: .warning, sessionId: sessionId)
+                check.logs.append(PPSRLogEntry(message: "FlowScript did not submit — falling back to native", level: .warning))
+                shouldRunNativeSubmit = true
+            }
+        }
+
+        if !scriptPlayed {
+            advanceTo(.enteringPayment, check: check, message: "Filling card: \(check.card.brand) \(check.card.displayNumber)")
+
+            guard !isTimedOut(deadline) else { return .timeout }
+            let cardResult = await retryFill(session: session, check: check, fieldName: "Card Number") {
+                await session.fillCardNumber(check.card.number)
+            }
+            guard cardResult else {
+                await captureScreenshotForCheck(session: session, check: check, step: "card_fill_failed", note: "Card fill failed", autoResult: .unknown)
+                return .connectionFailure
+            }
+            await speedDelay(milliseconds: 300)
+
+            let expiryStr = "\(check.expiryMonth)/\(check.expiryYear)"
+            let expiryResult = await session.fillExpiry(expiryStr)
+            if expiryResult.success {
+                check.logs.append(PPSRLogEntry(message: "Expiry filled as combined: \(expiryStr)", level: .success))
+            } else {
+                let monthResult = await retryFill(session: session, check: check, fieldName: "Exp Month") {
+                    await session.fillExpMonth(check.expiryMonth)
+                }
+                guard monthResult else { return .connectionFailure }
+
+                let yearResult = await retryFill(session: session, check: check, fieldName: "Exp Year") {
+                    await session.fillExpYear(check.expiryYear)
+                }
+                guard yearResult else { return .connectionFailure }
+            }
+            await speedDelay(milliseconds: 200)
+
+            let cvvResult = await retryFill(session: session, check: check, fieldName: "CVV") {
+                await session.fillCVV(check.cvv)
+            }
+            guard cvvResult else {
+                await captureScreenshotForCheck(session: session, check: check, step: "cvv_fill_failed", note: "CVV fill failed", autoResult: .unknown)
+                return .connectionFailure
+            }
+        }
+
+        if shouldRunNativeSubmit {
+            guard !isTimedOut(deadline) else { return .timeout }
+            await speedDelay(milliseconds: 500)
+
+            guard !isTimedOut(deadline) else { return .timeout }
+            logger.log("Phase: SUBMIT PAYMENT (NATIVE)", category: .automation, level: .info, sessionId: sessionId)
+            advanceTo(.processingPayment, check: check, message: "Submitting payment (native)...")
+
+            var submitResult: (success: Bool, detail: String) = (false, "")
+            for attempt in 1...3 {
+                submitResult = await session.clickSubmitPayment()
+                if submitResult.success {
+                    check.logs.append(PPSRLogEntry(message: "Submit: \(submitResult.detail)", level: .success))
+                    break
+                }
+                check.logs.append(PPSRLogEntry(message: "Submit attempt \(attempt)/3 failed: \(submitResult.detail)", level: .warning))
+                if attempt < 3 { await speedDelay(seconds: Double(attempt)) }
+            }
+
+            guard submitResult.success else {
+                failCheck(check, message: "SUBMIT FAILED after 3 attempts: \(submitResult.detail)")
+                await captureScreenshotForCheck(session: session, check: check, step: "submit_failed", note: "Submit failed", autoResult: .unknown)
+                return .connectionFailure
+            }
         } else {
-            let monthResult = await retryFill(session: session, check: check, fieldName: "Exp Month") {
-                await session.fillExpMonth(check.expiryMonth)
-            }
-            guard monthResult else { return .connectionFailure }
-
-            let yearResult = await retryFill(session: session, check: check, fieldName: "Exp Year") {
-                await session.fillExpYear(check.expiryYear)
-            }
-            guard yearResult else { return .connectionFailure }
-        }
-        await speedDelay(milliseconds: 200)
-
-        let cvvResult = await retryFill(session: session, check: check, fieldName: "CVV") {
-            await session.fillCVV(check.cvv)
-        }
-        guard cvvResult else {
-            await captureScreenshotForCheck(session: session, check: check, step: "cvv_fill_failed", note: "CVV fill failed", autoResult: .unknown)
-            return .connectionFailure
-        }
-        guard !isTimedOut(deadline) else { return .timeout }
-        await speedDelay(milliseconds: 500)
-
-        guard !isTimedOut(deadline) else { return .timeout }
-        logger.log("Phase: SUBMIT PAYMENT", category: .automation, level: .info, sessionId: sessionId)
-        advanceTo(.processingPayment, check: check, message: "Submitting payment...")
-
-        var submitResult: (success: Bool, detail: String) = (false, "")
-        for attempt in 1...3 {
-            submitResult = await session.clickSubmitPayment()
-            if submitResult.success {
-                check.logs.append(PPSRLogEntry(message: "Submit: \(submitResult.detail)", level: .success))
-                break
-            }
-            check.logs.append(PPSRLogEntry(message: "Submit attempt \(attempt)/3 failed: \(submitResult.detail)", level: .warning))
-            if attempt < 3 { await speedDelay(seconds: Double(attempt)) }
+            logger.log("Phase: SUBMIT PAYMENT (SKIPPED - FlowScript handled it)", category: .automation, level: .info, sessionId: sessionId)
         }
 
-        guard submitResult.success else {
-            failCheck(check, message: "SUBMIT FAILED after 3 attempts: \(submitResult.detail)")
-            await captureScreenshotForCheck(session: session, check: check, step: "submit_failed", note: "Submit failed", autoResult: .unknown)
-            return .connectionFailure
-        }
-
-        let preSubmitURL = session.webView?.url?.absoluteString ?? ""
+        let preSubmitURL = baselineURL
 
         let bpTimings = automationSettings.parsedPostSubmitTimings
         let bpSubmitTime = ContinuousClock.now
