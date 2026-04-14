@@ -166,6 +166,10 @@ final class ApexAutomationEngine {
         config.defaultWebpagePreferences.allowsContentJavaScript = true
 
         let contentController = WKUserContentController()
+        
+        // Inject baseline scripts including cookie consent suppression
+        contentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
+
         let kbScript = WKUserScript(source: """
         (function() {
             'use strict';
@@ -186,6 +190,10 @@ final class ApexAutomationEngine {
         config.userContentController = contentController
 
         let wv = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
+        
+        // Register for consent management
+        CookieConsentManager.shared.register(wv)
+
         defer {
             wv.stopLoading()
             wv.configuration.websiteDataStore.removeData(

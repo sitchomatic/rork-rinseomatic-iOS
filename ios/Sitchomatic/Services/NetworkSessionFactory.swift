@@ -202,6 +202,9 @@ class NetworkSessionFactory {
 
     @discardableResult
     func configureWKWebView(config wkConfig: WKWebViewConfiguration, networkConfig: ActiveNetworkConfig, target: ProxyRotationService.ProxyTarget = .joe, bypassTunnel: Bool = false) -> Bool {
+        // Inject baseline scripts including cookie consent suppression
+        wkConfig.userContentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
+        
         let dataStore = wkConfig.websiteDataStore
         let resolvedConfig = bypassTunnel ? networkConfig : resolveEffectiveConfig(networkConfig)
 

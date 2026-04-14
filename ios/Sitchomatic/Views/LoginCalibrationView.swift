@@ -396,6 +396,9 @@ class CalibrationWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptMes
         config.websiteDataStore = .nonPersistent()
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
+        
+        // Inject baseline scripts including cookie consent suppression
+        config.userContentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
 
         let tapScript = WKUserScript(source: Self.tapInterceptJS, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         config.userContentController.addUserScript(tapScript)
@@ -425,6 +428,10 @@ class CalibrationWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptMes
         config.userContentController.addUserScript(stealthScript)
 
         let wv = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
+        
+        // Register for consent management
+        CookieConsentManager.shared.register(wv)
+
         wv.navigationDelegate = self
         wv.customUserAgent = profile.userAgent
         self.webView = wv

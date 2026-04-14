@@ -151,6 +151,13 @@ struct SitchomaticApp: App {
         AppStabilityCoordinator.shared.start()
         WebViewLifecycleManager.shared.startZombieSweeper()
 
+        // Apply cookie consent globally on launch if already granted
+        if CookieConsentManager.shared.hasConsent {
+            Task { @MainActor in
+                await CookieConsentManager.shared.grantConsent()
+            }
+        }
+
         Task {
             try? await Task.sleep(for: .seconds(10))
             CrashProtectionService.shared.clearLaunchTimestampsAfterStableLaunch()

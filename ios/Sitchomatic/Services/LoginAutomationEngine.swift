@@ -627,6 +627,10 @@ class LoginAutomationEngine {
                 session.webView?.customUserAgent = newProfile.userAgent
                 let newJS = stealth.createStealthUserScript(profile: newProfile)
                 session.webView?.configuration.userContentController.removeAllUserScripts()
+                
+                // Re-add baseline scripts
+                session.webView?.configuration.userContentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
+                
                 session.webView?.configuration.userContentController.addUserScript(newJS)
                 attempt.logs.append(PPSRLogEntry(message: "AI: rotated fingerprint (seed: \(newProfile.seed))", level: .info))
                 challengeBypassed = true

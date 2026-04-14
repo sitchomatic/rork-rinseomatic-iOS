@@ -284,6 +284,9 @@ public final class HeadlessWebViewWorker: NSObject, WKNavigationDelegate, WKScri
 
         guard let webView = self.webView else { return nil }
 
+        // Register for consent management
+        CookieConsentManager.shared.register(webView)
+
         // Register with the pool for Jetsam mitigation
         WebViewPool.shared.mount(webView, for: workerID)
         defer { WebViewPool.shared.unmount(id: workerID) }
@@ -339,6 +342,9 @@ public final class HeadlessWebViewWorker: NSObject, WKNavigationDelegate, WKScri
         // Use WeakTrampolineProxy to prevent retain cycles
         let proxy = WeakTrampolineProxy(target: self)
         contentController.add(proxy, name: "hyperflowBridge")
+
+        // Inject baseline scripts including cookie consent suppression
+        contentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
 
         // Inject stealth scripts
         let stealth = PPSRStealthService.shared

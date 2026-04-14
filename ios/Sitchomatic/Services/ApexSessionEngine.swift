@@ -156,6 +156,7 @@ class LoginSiteWebSession: NSObject {
         let proxy = ApexMessageProxy(target: self)
         contentController.add(proxy, name: "apexBridge")
 
+        contentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
         contentController.addUserScript(ApexConstants.keyboardSuppressionScript)
 
         config.userContentController = contentController
@@ -199,6 +200,7 @@ class LoginSiteWebSession: NSObject {
         // Register with both the Apex session tracker and pool.
         WebViewTracker.shared.incrementActive(sessionId: trackerSessionId)
         if let wv = webView {
+            CookieConsentManager.shared.register(wv)
             WebViewPool.shared.mount(wv, for: sessionId)
         }
 
@@ -511,8 +513,7 @@ class LoginSiteWebSession: NSObject {
                 self.stealthProfile = newProfile
                 webView?.customUserAgent = newProfile.userAgent
                 let newJS = stealth.createStealthUserScript(profile: newProfile)
-                webView?.configuration.userContentController.removeAllUserScripts()
-                webView?.configuration.userContentController.addUserScript(newJS)
+                installActiveUserScripts(stealthScript: newJS)
                 _ = await executeJS(PPSRStealthService.shared.buildComprehensiveStealthJSPublic(profile: newProfile))
                 try? await Task.sleep(for: .milliseconds(500))
             }
@@ -1534,6 +1535,7 @@ class LoginWebSession: NSObject, ScreenshotCapableSession {
             contentController.addUserScript(blockScript)
         }
 
+        contentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
         contentController.addUserScript(ApexConstants.keyboardSuppressionScript)
         config.userContentController = contentController
 
@@ -1574,6 +1576,7 @@ class LoginWebSession: NSObject, ScreenshotCapableSession {
         }
 
         if let wv = webView {
+            CookieConsentManager.shared.register(wv)
             WebViewPool.shared.mount(wv, for: sessionId)
         }
     }
@@ -2039,6 +2042,11 @@ class LoginWebSession: NSObject, ScreenshotCapableSession {
     private func installActiveUserScripts(stealthScript: WKUserScript?) {
         guard let contentController = webView?.configuration.userContentController else { return }
         contentController.removeAllUserScripts()
+        
+        // Re-add baseline scripts
+        contentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
+        contentController.addUserScript(ApexConstants.keyboardSuppressionScript)
+
         if let blockScript = blockImagesScript {
             contentController.addUserScript(blockScript)
         }
@@ -2277,6 +2285,7 @@ class BPointWebSession: NSObject, ScreenshotCapableSession {
             contentController.addUserScript(blockScript)
         }
 
+        contentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
         contentController.addUserScript(ApexConstants.keyboardSuppressionScript)
         config.userContentController = contentController
         installBlockContentRules(on: contentController)
@@ -2313,6 +2322,7 @@ class BPointWebSession: NSObject, ScreenshotCapableSession {
         }
 
         if let wv = webView {
+            CookieConsentManager.shared.register(wv)
             WebViewPool.shared.mount(wv, for: sessionId)
         }
     }

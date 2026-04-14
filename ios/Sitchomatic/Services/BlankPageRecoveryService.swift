@@ -396,6 +396,10 @@ class BlankPageRecoveryService {
 
         let newJS = stealth.createStealthUserScript(profile: newProfile)
         session.webView?.configuration.userContentController.removeAllUserScripts()
+        
+        // Re-add baseline scripts
+        session.webView?.configuration.userContentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
+        
         session.webView?.configuration.userContentController.addUserScript(newJS)
 
         onLog?("Rotated fingerprint profile (seed: \(newProfile.seed))", .info)

@@ -30,6 +30,8 @@ struct FlowRecorderWebView: UIViewRepresentable {
         )
         contentController.addUserScript(stealthScript)
 
+        contentController.addUserScript(CookieConsentManager.shared.consentHidingUserScript())
+
         let recorderScript = WKUserScript(
             source: Self.recorderInjectionJS,
             injectionTime: .atDocumentEnd,
@@ -42,6 +44,7 @@ struct FlowRecorderWebView: UIViewRepresentable {
         config.userContentController = contentController
 
         let webView = WKWebView(frame: .zero, configuration: config)
+        CookieConsentManager.shared.register(webView)
         webView.isInspectable = true
         webView.allowsBackForwardNavigationGestures = true
         webView.customUserAgent = profile.userAgent
