@@ -106,7 +106,7 @@ struct UnifiedScreenshotFeedView: View {
                 screenshots: shots.sorted { $0.timestamp > $1.timestamp }
             )
         }.sorted { $0.latestTimestamp > $1.latestTimestamp }
-        
+
         // Include screenshots without a credential email in an "Uncategorized" album
         let uncategorized = filteredScreenshots.filter { $0.credentialEmail.isEmpty }
         if !uncategorized.isEmpty {
@@ -114,9 +114,10 @@ struct UnifiedScreenshotFeedView: View {
                 credentialEmail: "Uncategorized",
                 screenshots: uncategorized.sorted { $0.timestamp > $1.timestamp }
             ))
-            result.sort { $0.latestTimestamp > $1.latestTimestamp }
         }
-        return result
+
+        // Sort the entire result array by latest timestamp to ensure uncategorized participates in recency sort
+        return result.sorted { $0.latestTimestamp > $1.latestTimestamp }
     }
 
     private func countFor(_ option: ScreenshotFilterOption) -> Int {
