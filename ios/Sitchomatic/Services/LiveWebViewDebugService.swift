@@ -78,6 +78,7 @@ class LiveWebViewDebugService {
         previewScale = 1
         currentURL = ""
         currentTitle = ""
+        // autoObserve state is preserved across detach/reattach cycles
     }
 
     var currentModeTitle: String {
@@ -99,6 +100,7 @@ class LiveWebViewDebugService {
     }
 
     func attachToNearest() {
+        autoObserve = true
         syncAutomaticAttachment()
     }
 
@@ -121,6 +123,15 @@ class LiveWebViewDebugService {
             let fitted = min(max(containerSize.width / contentWidth, 0.35), 1)
             previewScale = fitted
         }
+    }
+
+    private static let zoomLevels: [CGFloat] = [1.0, 0.75, 0.5, 0.33]
+
+    func cycleZoom() {
+        guard let webView = attachedWebView else { return }
+        let currentIndex = zoomLevels.firstIndex(where: { abs($0 - previewScale) < 0.01 }) ?? 0
+        let nextIndex = (currentIndex + 1) % zoomLevels.count
+        previewScale = zoomLevels[nextIndex]
     }
 
     func captureScreenshot() {

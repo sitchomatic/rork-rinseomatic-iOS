@@ -5,11 +5,15 @@ struct UnifiedScreenshotFeedView: View {
     @State private var manager = UnifiedScreenshotManager.shared
     @State private var foundationStore = AutomationFoundationStore.shared
     @State private var selectedScreenshot: UnifiedScreenshot?
+    @State private var selectedAlbum: UnifiedScreenshotAlbum?
     @State private var filterOption: ScreenshotFilterOption = .all
     @State private var showStats: Bool = false
     @State private var showClearConfirm: Bool = false
     @State private var showFullImage: Bool = false
     @State private var feedDensity: ScreenshotFeedDensity = .twoUp
+    @State private var showFlipbook: Bool = false
+    @State private var flipbookScreenshots: [UnifiedScreenshot] = []
+    @State private var flipbookStartIndex: Int = 0
 
     nonisolated enum ScreenshotFeedDensity: String, CaseIterable, Identifiable, Sendable {
         case focus = "Focus"
@@ -93,6 +97,17 @@ struct UnifiedScreenshotFeedView: View {
         }
     }
 
+    private var albums: [UnifiedScreenshotAlbum] {
+        let validScreenshots = filteredScreenshots.filter { !$0.credentialEmail.isEmpty }
+        let grouped = Dictionary(grouping: validScreenshots) { $0.credentialEmail }
+        return grouped.map { email, shots in
+            UnifiedScreenshotAlbum(
+                credentialEmail: email,
+                screenshots: shots.sorted { $0.timestamp > $1.timestamp }
+            )
+        }.sorted { $0.latestTimestamp > $1.latestTimestamp }
+    }
+
     private func countFor(_ option: ScreenshotFilterOption) -> Int {
         switch option {
         case .all: manager.screenshots.count
@@ -129,10 +144,10 @@ struct UnifiedScreenshotFeedView: View {
                         .padding(.vertical, 12)
                         .padding(.bottom, 24)
                 } else {
-                    LazyVGrid(columns: feedDensity.columns, spacing: 10) {
-                        ForEach(filteredScreenshots) { screenshot in
-                            Button { selectedScreenshot = screenshot } label: {
-                                ScreenshotTile(screenshot: screenshot, imageHeight: feedDensity.tileHeight)
+                    LazyVStack(spacing: 12) {
+                        ForEach(albums) { album in
+                            Button { selectedAlbum = album } label: {
+                                UnifiedAlbumCard(album: album)
                             }
                             .buttonStyle(.plain)
                         }
@@ -172,8 +187,18 @@ struct UnifiedScreenshotFeedView: View {
                 }
             }
         }
+        .sheet(item: $selectedAlbum) { album in
+            UnifiedAlbumDetailSheet(album: album, showFullImage: $showFullImage, onOpenFlipbook: { screenshots, index in
+                flipbookScreenshots = screenshots
+                flipbookStartIndex = index
+                showFlipbook = true
+            })
+        }
         .sheet(item: $selectedScreenshot) { screenshot in
             ScreenshotDetailSheet(screenshot: screenshot, showFullImage: $showFullImage)
+        }
+        .fullScreenCover(isPresented: $showFlipbook) {
+            UnifiedScreenshotFlipbookView(screenshots: flipbookScreenshots, startIndex: flipbookStartIndex)
         }
         .alert("Clear All Screenshots?", isPresented: $showClearConfirm) {
             Button("Clear All", role: .destructive) { manager.clearAll() }
@@ -709,5 +734,367 @@ struct AIStatPill: View {
         .padding(.vertical, 6)
         .background(color.opacity(0.08))
         .clipShape(.rect(cornerRadius: 6))
+    }
+}
+
+// MARK: - Unified Screenshot Album
+
+struct UnifiedScreenshotAlbum: Identifiable {
+    let credentialEmail: String
+    let screenshots: [UnifiedScreenshot]
+
+    var id: String { credentialEmail }
+
+    var latestTimestamp: Date {
+        screenshots.first?.timestamp ?? .distantPast
+    }
+
+    var joeScreenshots: [UnifiedScreenshot] {
+        screenshots.filter { $0.site.lowercased().contains("joe") }
+    }
+
+    var ignitionScreenshots: [UnifiedScreenshot] {
+        screenshots.filter { $0.site.lowercased().contains("ign") }
+    }
+
+    var hasBothSites: Bool {
+        !joeScreenshots.isEmpty && !ignitionScreenshots.isEmpty
+    }
+
+    var joeResult: String {
+        let terminal = joeScreenshots.first(where: { $0.detectedOutcome != .unknown })
+        return terminal?.outcomeLabel ?? "PENDING"
+    }
+
+    var ignitionResult: String {
+        let terminal = ignitionScreenshots.first(where: { $0.detectedOutcome != .unknown })
+        return terminal?.outcomeLabel ?? "PENDING"
+    }
+
+    var joeResultColor: Color {
+        joeScreenshots.first(where: { $0.detectedOutcome != .unknown })?.outcomeColor ?? .gray
+    }
+
+    var ignitionResultColor: Color {
+        ignitionScreenshots.first(where: { $0.detectedOutcome != .unknown })?.outcomeColor ?? .gray
+    }
+
+    var pairedResultText: String {
+        if hasBothSites {
+            return "\(joeResult) / \(ignitionResult)"
+        }
+        if !joeScreenshots.isEmpty { return joeResult }
+        if !ignitionScreenshots.isEmpty { return ignitionResult }
+        return "PENDING"
+    }
+
+    var highestPriorityColor: Color {
+        let jc = joeScreenshots.first(where: { $0.detectedOutcome != .unknown })
+        let ic = ignitionScreenshots.first(where: { $0.detectedOutcome != .unknown })
+        if let j = jc, j.detectedOutcome == .success { return .green }
+        if let i = ic, i.detectedOutcome == .success { return .green }
+        if let j = jc, j.detectedOutcome == .permDisabled { return .red }
+        if let i = ic, i.detectedOutcome == .permDisabled { return .red }
+        return jc?.outcomeColor ?? ic?.outcomeColor ?? .gray
+    }
+}
+
+// MARK: - Unified Album Card
+
+struct UnifiedAlbumCard: View {
+    let album: UnifiedScreenshotAlbum
+
+    var body: some View {
+        VStack(spacing: 0) {
+            dualSitePreview
+
+            if album.hasBothSites {
+                pairedResultBar
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "person.fill").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(album.credentialEmail)
+                    .font(.system(.caption, design: .monospaced, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer()
+                Text("\(album.screenshots.count)")
+                    .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Image(systemName: "photo.stack").font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+        }
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(.rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(album.highestPriorityColor.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private var dualSitePreview: some View {
+        HStack(spacing: 1) {
+            albumSitePreview(
+                screenshots: album.joeScreenshots,
+                label: "JOE",
+                icon: "suit.spade.fill",
+                color: .green,
+                result: album.joeResult,
+                resultColor: album.joeResultColor
+            )
+            albumSitePreview(
+                screenshots: album.ignitionScreenshots,
+                label: "IGN",
+                icon: "flame.fill",
+                color: .orange,
+                result: album.ignitionResult,
+                resultColor: album.ignitionResultColor
+            )
+        }
+        .frame(height: 130)
+        .clipShape(.rect(cornerRadii: .init(topLeading: 12, topTrailing: 12)))
+    }
+
+    private func albumSitePreview(screenshots: [UnifiedScreenshot], label: String, icon: String, color: Color, result: String, resultColor: Color) -> some View {
+        GeometryReader { geo in
+            if let shot = screenshots.first {
+                Color.clear
+                    .overlay {
+                        Image(uiImage: shot.displayImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .allowsHitTesting(false)
+                    }
+                    .clipped()
+                    .overlay(alignment: .top) {
+                        HStack(spacing: 3) {
+                            Image(systemName: icon).font(.system(size: 7, weight: .bold))
+                            Text(label).font(.system(size: 8, weight: .heavy, design: .monospaced))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(color.opacity(0.85)).clipShape(Capsule())
+                        .padding(.top, 6)
+                    }
+                    .overlay(alignment: .bottom) {
+                        HStack {
+                            Spacer()
+                            Text(result)
+                                .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                                .foregroundStyle(.white)
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                        .background(resultColor.opacity(0.85))
+                    }
+            } else {
+                Color(.tertiarySystemGroupedBackground)
+                    .overlay {
+                        VStack(spacing: 4) {
+                            Image(systemName: icon).font(.caption).foregroundStyle(color.opacity(0.4))
+                            Text(label).font(.system(size: 8, weight: .heavy, design: .monospaced)).foregroundStyle(.tertiary)
+                            Text("—").font(.caption2).foregroundStyle(.quaternary)
+                        }
+                    }
+            }
+        }
+    }
+
+    private var pairedResultBar: some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 4) {
+                Image(systemName: "suit.spade.fill").font(.system(size: 8)).foregroundStyle(.green)
+                Text(album.joeResult)
+                    .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(album.joeResultColor)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+
+            Rectangle().fill(.quaternary).frame(width: 1, height: 16)
+
+            HStack(spacing: 4) {
+                Image(systemName: "flame.fill").font(.system(size: 8)).foregroundStyle(.orange)
+                Text(album.ignitionResult)
+                    .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(album.ignitionResultColor)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+        }
+        .background(Color(.tertiarySystemGroupedBackground))
+    }
+}
+
+// MARK: - Unified Album Detail Sheet
+
+struct UnifiedAlbumDetailSheet: View {
+    let album: UnifiedScreenshotAlbum
+    @Binding var showFullImage: Bool
+    var onOpenFlipbook: ([UnifiedScreenshot], Int) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    albumInfoCard
+                    if album.hasBothSites { pairedResultsHeader }
+                    screenshotsList
+                }
+                .padding()
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Album").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+
+    private var albumInfoCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "photo.stack.fill").foregroundStyle(album.highestPriorityColor)
+                Text("Credential Session").font(.headline)
+                Spacer()
+                Text(album.pairedResultText)
+                    .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(album.highestPriorityColor).clipShape(Capsule())
+            }
+            HStack(spacing: 6) {
+                Image(systemName: "person.fill").font(.caption).foregroundStyle(.secondary)
+                Text(album.credentialEmail).font(.system(.caption, design: .monospaced, weight: .semibold))
+            }
+            HStack(spacing: 12) {
+                Text("\(album.screenshots.count) screenshots").font(.caption).foregroundStyle(.tertiary)
+                if album.hasBothSites {
+                    Text("\(album.joeScreenshots.count) Joe · \(album.ignitionScreenshots.count) Ign")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding().background(Color(.secondarySystemGroupedBackground)).clipShape(.rect(cornerRadius: 12))
+    }
+
+    private var pairedResultsHeader: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 4) {
+                HStack(spacing: 4) {
+                    Image(systemName: "suit.spade.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(.green)
+                    Text("JOE FORTUNE").font(.system(size: 9, weight: .heavy, design: .monospaced)).foregroundStyle(.secondary)
+                }
+                Text(album.joeResult)
+                    .font(.system(size: 13, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(album.joeResultColor)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(album.joeResultColor.opacity(0.06))
+
+            Rectangle().fill(.quaternary).frame(width: 1)
+
+            VStack(spacing: 4) {
+                HStack(spacing: 4) {
+                    Image(systemName: "flame.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(.orange)
+                    Text("IGNITION").font(.system(size: 9, weight: .heavy, design: .monospaced)).foregroundStyle(.secondary)
+                }
+                Text(album.ignitionResult)
+                    .font(.system(size: 13, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(album.ignitionResultColor)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(album.ignitionResultColor.opacity(0.06))
+        }
+        .clipShape(.rect(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary, lineWidth: 0.5))
+    }
+
+    private var screenshotsList: some View {
+        LazyVStack(spacing: 12) {
+            ForEach(Array(album.screenshots.enumerated()), id: \.element.id) { index, screenshot in
+                Button {
+                    onOpenFlipbook(album.screenshots, index)
+                } label: {
+                    UnifiedScreenshotListCard(screenshot: screenshot)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+// MARK: - Unified Screenshot List Card
+
+struct UnifiedScreenshotListCard: View {
+    let screenshot: UnifiedScreenshot
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Color.clear
+                .frame(width: 70, height: 52)
+                .overlay {
+                    Image(uiImage: screenshot.displayImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .allowsHitTesting(false)
+                }
+                .clipShape(.rect(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(screenshot.outcomeColor.opacity(0.3), lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: screenshot.siteIcon)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(screenshot.siteColor)
+                    Text(screenshot.siteLabel)
+                        .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                        .foregroundStyle(.primary)
+                    Text("·")
+                        .foregroundStyle(.quaternary)
+                    Text(screenshot.step.displayName)
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                HStack(spacing: 6) {
+                    Text(screenshot.formattedTime)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                    if screenshot.isCrucial {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.yellow)
+                    }
+                }
+            }
+
+            Spacer()
+
+            Text(screenshot.outcomeLabel)
+                .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .background(screenshot.outcomeColor.opacity(0.85))
+                .clipShape(Capsule())
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.quaternary)
+        }
+        .padding(10)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(.rect(cornerRadius: 12))
     }
 }

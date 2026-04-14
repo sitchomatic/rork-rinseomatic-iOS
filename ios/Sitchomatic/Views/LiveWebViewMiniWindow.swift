@@ -135,7 +135,7 @@ struct LiveWebViewMiniWindow: View {
             HStack(spacing: 6) {
                 Spacer()
                 Button {
-                    debugService.autoFitPreview(to: sizePreset.size)
+                    debugService.cycleZoom()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.system(size: 13, weight: .bold))

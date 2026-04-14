@@ -14,7 +14,6 @@ struct LiveWebViewFullScreenView: View {
                             urlBar
                             Divider()
                             LiveWebViewContainerView(webView: webView, interactive: debugService.isInteractive)
-                                .scaleEffect(debugService.previewScale)
                                 .overlay(alignment: .top) {
                                     if debugService.isInteractive {
                                         interactiveBadge
@@ -73,7 +72,7 @@ struct LiveWebViewFullScreenView: View {
                     .sensoryFeedback(.impact(weight: .medium), trigger: debugService.screenshotToast)
 
                     Button {
-                        debugService.autoFitPreview(to: geo.size)
+                        debugService.cycleZoom()
                     } label: {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
                     }

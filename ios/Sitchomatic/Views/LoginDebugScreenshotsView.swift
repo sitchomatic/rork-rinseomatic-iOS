@@ -509,16 +509,17 @@ struct LoginAlbumCard: View {
                         .background(color.opacity(0.85)).clipShape(Capsule())
                         .padding(.top, 6)
                     }
-                    .overlay(alignment: .bottomTrailing) {
+                    .overlay(alignment: .bottom) {
                         let result = screenshots.first(where: { $0.effectiveResult != .none })?.effectiveResult ?? .none
-                        if result != .none {
-                            Text(result.displayLabel.uppercased())
-                                .font(.system(size: 7, weight: .heavy, design: .monospaced))
+                        HStack {
+                            Spacer()
+                            Text(result == .none ? "PENDING" : result.displayLabel.uppercased())
+                                .font(.system(size: 11, weight: .heavy, design: .monospaced))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(result.color.opacity(0.85)).clipShape(Capsule())
-                                .padding(6)
+                            Spacer()
                         }
+                        .padding(.vertical, 4)
+                        .background((result == .none ? Color.gray : result.color).opacity(0.85))
                     }
             } else {
                 Color(.tertiarySystemGroupedBackground)
@@ -906,14 +907,16 @@ struct LoginAlbumDetailSheet: View {
     private var screenshotsList: some View {
         LazyVStack(spacing: 12) {
             ForEach(Array(album.screenshots.enumerated()), id: \.element.id) { index, screenshot in
-                Button { selectedScreenshot = screenshot } label: { LoginScreenshotCard(screenshot: screenshot) }
+                Button {
+                    flipbookStartIndex = index
+                    showFlipbook = true
+                } label: { LoginScreenshotCard(screenshot: screenshot) }
                     .buttonStyle(.plain)
                     .contextMenu {
                         Button {
-                            flipbookStartIndex = index
-                            showFlipbook = true
+                            selectedScreenshot = screenshot
                         } label: {
-                            Label("Flipbook View", systemImage: "book.pages")
+                            Label("Review & Correct", systemImage: "pencil.circle")
                         }
                         Section("Override Result") {
                             ForEach(UserResultOverride.overrideable, id: \.self) { result in
