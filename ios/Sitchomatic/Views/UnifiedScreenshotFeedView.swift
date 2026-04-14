@@ -35,9 +35,9 @@ struct UnifiedScreenshotFeedView: View {
 
         var tileHeight: CGFloat {
             switch self {
-            case .focus: 220
-            case .twoUp: 168
-            case .compact: 122
+            case .focus: return 220
+            case .twoUp: return 168
+            case .compact: return 122
             }
         }
 
@@ -111,7 +111,7 @@ struct UnifiedScreenshotFeedView: View {
         let uncategorized = filteredScreenshots.filter { $0.credentialEmail.isEmpty }
         if !uncategorized.isEmpty {
             result.append(UnifiedScreenshotAlbum(
-                credentialEmail: "",
+                credentialEmail: "(Uncategorized)",
                 screenshots: uncategorized.sorted { $0.timestamp > $1.timestamp }
             ))
         }
