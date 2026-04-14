@@ -73,11 +73,6 @@ struct DevSectionPage<Content: View>: View {
     private func save() {
         let normalized = settings.normalizedTimeouts()
         AutomationSettingsPersistence.shared.save(normalized)
-        UnifiedSessionViewModel.shared.automationSettings = normalized
-        DualFindViewModel.shared.automationSettings = normalized
-        LoginViewModel.shared.automationSettings = normalized
-        PPSRAutomationViewModel.shared.automationSettings = normalized
-        TripleClickEngine.shared.loadSettings()
         withAnimation(.spring(duration: 0.3)) { savedToast = true }
         Task {
             try? await Task.sleep(for: .seconds(1.5))

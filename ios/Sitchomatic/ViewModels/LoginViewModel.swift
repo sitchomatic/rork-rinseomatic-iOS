@@ -168,6 +168,13 @@ class LoginViewModel {
 
         notifications.requestPermission()
         loadPersistedData()
+        automationSettings = AutomationSettingsPersistence.shared.load()
+        NotificationCenter.default.addObserver(forName: .automationSettingsDidChange, object: nil, queue: .main) { [weak self] notification in
+            if let settings = notification.object as? AutomationSettings {
+                self?.automationSettings = settings
+                self?.syncAutomationSettingsToEngine()
+            }
+        }
         syncAutomationSettingsToEngine()
         restoreTestQueueIfNeeded()
     }

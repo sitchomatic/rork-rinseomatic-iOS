@@ -17,6 +17,15 @@ class LoginSettingsManager {
     private var settingsSaveTask: Task<Void, Never>?
     var onLog: ((String, PPSRLogEntry.Level) -> Void)?
 
+    init() {
+        NotificationCenter.default.addObserver(forName: .automationSettingsDidChange, object: nil, queue: .main) { [weak self] notification in
+            if let settings = notification.object as? AutomationSettings {
+                self?.automationSettings = settings
+                PPSRStealthService.shared.applySettings(settings)
+            }
+        }
+    }
+
     var effectiveColorScheme: ColorScheme? {
         appearanceMode.colorScheme
     }

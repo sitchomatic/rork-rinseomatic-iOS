@@ -17,6 +17,13 @@ final class TripleClickEngine {
     private var click1To2DelayMs: Int = 50
     private var click2To3DelayMs: Int = 50
 
+    private init() {
+        loadSettings()
+        NotificationCenter.default.addObserver(forName: .automationSettingsDidChange, object: nil, queue: .main) { [weak self] _ in
+            self?.loadSettings()
+        }
+    }
+
     func loadSettings() {
         let s = AutomationSettingsPersistence.shared.load()
         click1To2DelayMs = s.tripleClickInterClickDelayMs

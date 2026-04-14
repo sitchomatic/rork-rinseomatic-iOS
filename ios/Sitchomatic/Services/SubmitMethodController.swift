@@ -62,12 +62,7 @@ final class SubmitMethodController: ObservableObject {
         settings.ignSubmitMethod = ignSubmitMethod
         let normalized = settings.normalizedTimeouts()
         persistence.save(normalized)
-        DebugLogger.logBackground("SubmitMethodController: Joe=\(joeSubmitMethod.rawValue) Ign=\(ignSubmitMethod.rawValue) — saved to persistence and pushed live", category: .automation, level: .info)
-
-        UnifiedSessionViewModel.shared.automationSettings = normalized
-        DualFindViewModel.shared.automationSettings = normalized
-        LoginViewModel.shared.automationSettings = normalized
-        PPSRAutomationViewModel.shared.automationSettings = normalized
+        DebugLogger.logBackground("SubmitMethodController: Joe=\(joeSubmitMethod.rawValue) Ign=\(ignSubmitMethod.rawValue) — saved via NotificationCenter sync", category: .automation, level: .info)
     }
 
     func method(for site: LoginTargetSite) -> AutomationSettings.SubmitMethod {

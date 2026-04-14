@@ -200,15 +200,16 @@ struct DeveloperSettingsView: View {
         .navigationDestination(for: DevSectionID.self) { section in
             destinationView(for: section)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .automationSettingsDidChange)) { notification in
+            if let newSettings = notification.object as? AutomationSettings {
+                self.settings = newSettings
+            }
+        }
         .alert("Reset All Settings?", isPresented: $showResetConfirm) {
             Button("Reset", role: .destructive) {
                 let normalized = AutomationSettings().normalizedTimeouts()
                 AutomationSettingsPersistence.shared.save(normalized)
                 settings = normalized
-                UnifiedSessionViewModel.shared.automationSettings = normalized
-                DualFindViewModel.shared.automationSettings = normalized
-                LoginViewModel.shared.automationSettings = normalized
-                PPSRAutomationViewModel.shared.automationSettings = normalized
                 withAnimation(.spring(duration: 0.3)) { savedToast = true }
                 Task {
                     try? await Task.sleep(for: .seconds(1.5))

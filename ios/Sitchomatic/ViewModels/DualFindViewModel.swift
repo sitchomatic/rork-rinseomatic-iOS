@@ -166,6 +166,12 @@ class DualFindViewModel {
         loadResumePoint()
         loadSettings()
         loadAppSettings()
+        
+        NotificationCenter.default.addObserver(forName: .automationSettingsDidChange, object: nil, queue: .main) { [weak self] notification in
+            if let settings = notification.object as? AutomationSettings {
+                self?.automationSettings = settings
+            }
+        }
     }
 
     func parseEmails(from text: String) -> [String] {

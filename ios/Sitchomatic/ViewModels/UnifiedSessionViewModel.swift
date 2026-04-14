@@ -82,6 +82,14 @@ class UnifiedSessionViewModel {
         loadPersistedSessions()
         automationSettings = AutomationSettingsPersistence.shared.load()
         PPSRStealthService.shared.applySettings(automationSettings)
+        
+        NotificationCenter.default.addObserver(forName: .automationSettingsDidChange, object: nil, queue: .main) { [weak self] notification in
+            if let settings = notification.object as? AutomationSettings {
+                self?.automationSettings = settings
+                PPSRStealthService.shared.applySettings(settings)
+                TripleClickEngine.shared.loadSettings()
+            }
+        }
     }
 
     func importCredentials(_ text: String) {
@@ -149,9 +157,6 @@ class UnifiedSessionViewModel {
             log("No sessions to test", level: .warning)
             return
         }
-
-        automationSettings = AutomationSettingsPersistence.shared.load()
-        TripleClickEngine.shared.loadSettings()
 
         isPaused = false
         isStopping = false

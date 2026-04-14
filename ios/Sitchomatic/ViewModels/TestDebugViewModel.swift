@@ -238,14 +238,8 @@ class TestDebugViewModel {
         // Persist through the canonical path so settings survive app restart.
         AutomationSettingsPersistence.shared.save(settings)
 
-        LoginViewModel.shared.automationSettings = settings
-        UnifiedSessionViewModel.shared.automationSettings = settings
-        DualFindViewModel.shared.automationSettings = settings
-        PPSRAutomationViewModel.shared.automationSettings = settings
-        TripleClickEngine.shared.loadSettings()
-
         showAppliedToast = true
-        logger.log("TestDebug: Winner settings from session #\(winner.index) (\(winner.differentiator)) — saved to persistence and pushed live to all ViewModels", category: .login, level: .success)
+        logger.log("TestDebug: Winner settings from session #\(winner.index) (\(winner.differentiator)) — saved to persistence and synchronized live via NotificationCenter", category: .login, level: .success)
 
         Task {
             try? await Task.sleep(for: .seconds(2))

@@ -202,6 +202,12 @@ class PPSRAutomationViewModel {
         configureBPointEngine()
         notifications.requestPermission()
         loadPersistedData()
+        automationSettings = AutomationSettingsPersistence.shared.load()
+        NotificationCenter.default.addObserver(forName: .automationSettingsDidChange, object: nil, queue: .main) { [weak self] notification in
+            if let settings = notification.object as? AutomationSettings {
+                self?.automationSettings = settings
+            }
+        }
         batchPresets = presetService.loadPresets()
         schedules = scheduler.schedules
         scheduler.onScheduleTriggered = { [weak self] schedule in

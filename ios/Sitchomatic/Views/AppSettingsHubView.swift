@@ -322,10 +322,6 @@ struct AutomationSettingsRootView: View {
                 Button("Save") {
                     let normalized = settings.normalizedTimeouts()
                     AutomationSettingsPersistence.shared.save(normalized)
-                    UnifiedSessionViewModel.shared.automationSettings = normalized
-                    DualFindViewModel.shared.automationSettings = normalized
-                    LoginViewModel.shared.automationSettings = normalized
-                    PPSRAutomationViewModel.shared.automationSettings = normalized
                     withAnimation { saveToast = true }
                     Task { @MainActor in try? await Task.sleep(for: .seconds(1.5)); saveToast = false }
                 }
@@ -337,6 +333,11 @@ struct AutomationSettingsRootView: View {
                 toastBanner("Settings saved")
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .automationSettingsDidChange)) { notification in
+            if let newSettings = notification.object as? AutomationSettings {
+                self.settings = newSettings
+            }
+        }
     }
 
     private var quickActionsSection: some View {
@@ -345,10 +346,6 @@ struct AutomationSettingsRootView: View {
                 let reset = AutomationSettings().normalizedTimeouts()
                 settings = reset
                 AutomationSettingsPersistence.shared.save(reset)
-                UnifiedSessionViewModel.shared.automationSettings = reset
-                DualFindViewModel.shared.automationSettings = reset
-                LoginViewModel.shared.automationSettings = reset
-                PPSRAutomationViewModel.shared.automationSettings = reset
                 withAnimation { saveToast = true }
                 Task { @MainActor in try? await Task.sleep(for: .seconds(1.5)); saveToast = false }
             } label: {
@@ -485,11 +482,6 @@ struct TrueDetectionSettingsView: View {
                 Button("Save") {
                     let normalized = settings.normalizedTimeouts()
                     AutomationSettingsPersistence.shared.save(normalized)
-                    UnifiedSessionViewModel.shared.automationSettings = normalized
-                    DualFindViewModel.shared.automationSettings = normalized
-                    LoginViewModel.shared.automationSettings = normalized
-                    PPSRAutomationViewModel.shared.automationSettings = normalized
-                    TripleClickEngine.shared.loadSettings()
                     withAnimation { saveToast = true }
                     Task { @MainActor in try? await Task.sleep(for: .seconds(1.5)); saveToast = false }
                 }
@@ -500,11 +492,6 @@ struct TrueDetectionSettingsView: View {
                     let reset = AutomationSettings().normalizedTimeouts()
                     settings = reset
                     AutomationSettingsPersistence.shared.save(reset)
-                    UnifiedSessionViewModel.shared.automationSettings = reset
-                    DualFindViewModel.shared.automationSettings = reset
-                    LoginViewModel.shared.automationSettings = reset
-                    PPSRAutomationViewModel.shared.automationSettings = reset
-                    TripleClickEngine.shared.loadSettings()
                     withAnimation { saveToast = true }
                     Task { @MainActor in try? await Task.sleep(for: .seconds(1.5)); saveToast = false }
                 }
@@ -517,6 +504,11 @@ struct TrueDetectionSettingsView: View {
                     .padding(.horizontal, 16).padding(.vertical, 8)
                     .background(Color.green.opacity(0.85)).clipShape(Capsule())
                     .padding(.bottom, 24).transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .automationSettingsDidChange)) { notification in
+            if let newSettings = notification.object as? AutomationSettings {
+                self.settings = newSettings
             }
         }
     }
@@ -632,10 +624,6 @@ struct AllDelaysSettingsView: View {
                 Button("Save") {
                     let normalized = settings.normalizedTimeouts()
                     AutomationSettingsPersistence.shared.save(normalized)
-                    UnifiedSessionViewModel.shared.automationSettings = normalized
-                    DualFindViewModel.shared.automationSettings = normalized
-                    LoginViewModel.shared.automationSettings = normalized
-                    PPSRAutomationViewModel.shared.automationSettings = normalized
                     withAnimation { saveToast = true }
                     Task { @MainActor in try? await Task.sleep(for: .seconds(1.5)); saveToast = false }
                 }
@@ -683,11 +671,6 @@ struct AllDelaysSettingsView: View {
                     let normalized = settings.normalizedTimeouts()
                     settings = normalized
                     AutomationSettingsPersistence.shared.save(normalized)
-                    UnifiedSessionViewModel.shared.automationSettings = normalized
-                    DualFindViewModel.shared.automationSettings = normalized
-                    LoginViewModel.shared.automationSettings = normalized
-                    PPSRAutomationViewModel.shared.automationSettings = normalized
-                    TripleClickEngine.shared.loadSettings()
                     withAnimation { saveToast = true }
                     Task { @MainActor in try? await Task.sleep(for: .seconds(1.5)); saveToast = false }
                 }
@@ -700,6 +683,11 @@ struct AllDelaysSettingsView: View {
                     .padding(.horizontal, 16).padding(.vertical, 8)
                     .background(Color.green.opacity(0.85)).clipShape(Capsule())
                     .padding(.bottom, 24).transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .automationSettingsDidChange)) { notification in
+            if let newSettings = notification.object as? AutomationSettings {
+                self.settings = newSettings
             }
         }
     }
